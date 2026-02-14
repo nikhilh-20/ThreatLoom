@@ -4,6 +4,8 @@ AI-powered threat news analysis platform — aggregation, summarization, and for
 
 Threat Loom automatically collects cybersecurity articles from RSS feeds and research libraries, generates structured AI summaries with MITRE ATT&CK mapping animation, and provides natural language search and trend forecasting over your collected data.
 
+**[Documentation](https://nikhilh-20.github.io/ThreatLoom/)**
+
 <video src="https://github.com/user-attachments/assets/f718a422-508c-40f5-b795-c62920710c6b" controls></video>
 
 ## Features
