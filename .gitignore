@@ -1,0 +1,22 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Application data (secrets, database)
+data/
+config.json
+*.db
+*.db-shm
+*.db-wal
+
+# Generated docs site
+site/
+
+# IDE / tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo

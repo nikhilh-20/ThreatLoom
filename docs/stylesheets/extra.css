@@ -1,0 +1,65 @@
+/* Threat Loom — documentation overrides */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.md-header {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-left-width: 3px;
+}
+
+/* Hero section on landing page */
+.hero {
+  text-align: center;
+  padding: 2rem 0 1rem;
+}
+
+.hero h1 {
+  font-size: 2.4rem;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.hero .tagline {
+  font-size: 1.15rem;
+  opacity: 0.8;
+  margin-bottom: 1.5rem;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.feature-card {
+  background: var(--md-code-bg-color);
+  border-radius: 8px;
+  padding: 1.2rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.feature-card h3 {
+  font-size: 0.95rem;
+  margin: 0.5rem 0 0.3rem;
+}
+
+.feature-card p {
+  font-size: 0.85rem;
+  opacity: 0.85;
+  margin: 0;
+}
+
+.badge-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 1rem 0;
+}

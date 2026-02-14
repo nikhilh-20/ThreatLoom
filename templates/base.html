@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Threat Loom{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span class="brand-icon">&#9741;</span>
+                <h1>Threat Loom</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <span class="nav-icon">&#9881;</span>
+                    <span>Feed</span>
+                </a>
+                <a href="/intelligence" class="nav-item {% if request.path == '/intelligence' %}active{% endif %}">
+                    <span class="nav-icon">&#128270;</span>
+                    <span>Intelligence</span>
+                </a>
+                <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
+                    <span class="nav-icon">&#9881;</span>
+                    <span>Settings</span>
+                </a>
+            </nav>
+            <div class="sidebar-stats" id="sidebar-stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-articles">--</span>
+                    <span class="stat-label">Articles</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-sources">--</span>
+                    <span class="stat-label">Sources</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-summaries">--</span>
+                    <span class="stat-label">Summaries</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-wrapper">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search articles...">
+                </div>
+                <div class="top-bar-actions">
+                    <span class="refresh-status" id="refresh-status"></span>
+                    <div class="refresh-controls">
+                        <input type="number" id="refresh-days" class="days-input" value="1" min="1" max="30" title="Days to look back">
+                        <span class="days-label">days</span>
+                        <button class="btn btn-primary" id="refresh-btn" onclick="triggerRefresh()">
+                            <span class="btn-icon">&#8635;</span> Refresh
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-area">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

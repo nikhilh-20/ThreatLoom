@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Threat Loom{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <h1 class="page-title">Settings</h1>
+
+    <section class="settings-section">
+        <h2>OpenAI Configuration</h2>
+        <div class="form-group">
+            <label for="api-key">API Key</label>
+            <div class="input-with-action">
+                <input type="password" id="api-key" class="form-input" placeholder="sk-..." value="{{ config.openai_api_key or '' }}">
+                <button class="btn btn-secondary btn-sm" onclick="testApiKey()">Test</button>
+            </div>
+            <span class="form-hint" id="api-key-status"></span>
+        </div>
+        <div class="form-group">
+            <label for="model-select">Model</label>
+            <select id="model-select" class="form-input">
+                <option value="gpt-4o-mini" {% if config.openai_model == 'gpt-4o-mini' %}selected{% endif %}>gpt-4o-mini (Recommended)</option>
+                <option value="gpt-4o" {% if config.openai_model == 'gpt-4o' %}selected{% endif %}>gpt-4o</option>
+                <option value="gpt-4-turbo" {% if config.openai_model == 'gpt-4-turbo' %}selected{% endif %}>gpt-4-turbo</option>
+                <option value="gpt-3.5-turbo" {% if config.openai_model == 'gpt-3.5-turbo' %}selected{% endif %}>gpt-3.5-turbo</option>
+            </select>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Malpedia</h2>
+        <p class="form-hint">Optional. Adds Malpedia's curated threat-research library as an article source.
+            <a href="https://malpedia.caad.fkie.fraunhofer.de/" target="_blank">Get an API key</a>
+        </p>
+        <div class="form-group">
+            <label for="malpedia-key">API Key</label>
+            <div class="input-with-action">
+                <input type="password" id="malpedia-key" class="form-input" placeholder="API token..." value="{{ config.malpedia_api_key or '' }}">
+                <button class="btn btn-secondary btn-sm" onclick="testMalpediaKey()">Test</button>
+            </div>
+            <span class="form-hint" id="malpedia-key-status"></span>
+        </div>
+        {% set malpedia_source = source_map.get('https://malpedia.caad.fkie.fraunhofer.de/library') %}
+        {% if malpedia_source and malpedia_source.last_fetched %}
+        <p class="form-hint">Last fetched: {{ malpedia_source.last_fetched }}</p>
+        {% endif %}
+    </section>
+
+    <section class="settings-section">
+        <h2>Fetch Settings</h2>
+        <div class="form-group">
+            <label for="fetch-interval">Auto-fetch interval: <span id="interval-value">{{ config.fetch_interval_minutes }}</span> minutes</label>
+            <input type="range" id="fetch-interval" class="form-range" min="5" max="120" step="5" value="{{ config.fetch_interval_minutes }}" oninput="document.getElementById('interval-value').textContent = this.value">
+        </div>
+        <div class="refresh-controls">
+            <input type="number" id="settings-refresh-days" class="days-input" value="1" min="1" max="365" title="Days to look back">
+            <span class="days-label">days</span>
+            <button class="btn btn-primary" id="manual-refresh-btn" onclick="triggerRefresh()">
+                <span class="btn-icon">&#8635;</span> Refresh Now
+            </button>
+            <button class="btn btn-secondary" id="refresh-since-btn" onclick="refreshSinceLastRetrieval()">
+                <span class="btn-icon">&#8635;</span> Refresh Since Last Retrieval
+            </button>
+            <span class="refresh-status" id="settings-refresh-status"></span>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2>RSS Feeds</h2>
+        <div class="feed-list" id="feed-list">
+            {% for feed in config.feeds %}
+            <div class="feed-item" data-index="{{ loop.index0 }}">
+                <label class="toggle-label">
+                    <input type="checkbox" class="feed-toggle" {% if feed.enabled %}checked{% endif %}>
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="feed-info">
+                    <span class="feed-name">{{ feed.name }}</span>
+                    <span class="feed-url">{{ feed.url }}</span>
+                    {% set source = source_map.get(feed.url) %}
+                    {% if source and source.last_fetched %}
+                    <span class="feed-last-fetched">Last fetched: {{ source.last_fetched }}</span>
+                    {% else %}
+                    <span class="feed-last-fetched">Never fetched</span>
+                    {% endif %}
+                </div>
+                <button class="btn btn-danger btn-sm" onclick="removeFeed(this)" title="Remove feed">&times;</button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="add-feed-form">
+            <h3>Add Custom Feed</h3>
+            <div class="form-row">
+                <input type="text" id="new-feed-name" class="form-input" placeholder="Feed Name">
+                <input type="text" id="new-feed-url" class="form-input" placeholder="https://example.com/feed.xml">
+                <button class="btn btn-secondary" onclick="addFeed()">Add</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="settings-actions">
+        <button class="btn btn-primary btn-lg" onclick="saveSettings()">Save Settings</button>
+        <span class="save-status" id="save-status"></span>
+    </div>
+
+    <section class="settings-section settings-section-danger">
+        <h2>Danger Zone</h2>
+        <p class="form-hint">Clear all articles, summaries, and correlations. Sources and settings are preserved. Use the days input above to control how far back the next refresh will look.</p>
+        <div class="danger-zone-actions">
+            <button class="btn btn-danger" id="clear-db-btn" onclick="clearDatabase()">Clear Database</button>
+            <span class="save-status" id="clear-db-status"></span>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+    });
+</script>
+{% endblock %}

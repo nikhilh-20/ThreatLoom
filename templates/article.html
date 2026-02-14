@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}{{ article.title }} - Threat Loom{% endblock %}
+
+{% block content %}
+<div class="article-detail">
+    <a href="/" class="back-link">&larr; Back to Feed</a>
+
+    <article class="article-full">
+        <div class="article-meta">
+            <span class="source-badge">{{ article.source_name }}</span>
+            {% if article.author %}
+            <span class="article-author">by {{ article.author }}</span>
+            {% endif %}
+            {% if article.published_date %}
+            <time class="article-date">{{ article.published_date }}</time>
+            {% endif %}
+        </div>
+
+        <h1 class="article-title">{{ article.title }}</h1>
+
+        {% if article.tags %}
+        <div class="tag-list">
+            {% for tag in article.tags %}
+            <span class="tag-pill">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if article.summary_text %}
+        <section class="article-section">
+            <h2>Summary</h2>
+            <div class="summary-text markdown-body" id="summary-markdown">{{ article.summary_text }}</div>
+        </section>
+        {% endif %}
+
+        {% if article.key_points and article.key_points|length > 0 %}
+            {% if article.key_points[0] is mapping and article.key_points[0].phase is defined %}
+            {# Attack Flow visualization #}
+            <section class="attack-flow-section" id="attack-flow">
+                <div class="attack-flow-scanline"></div>
+                <div class="attack-flow-header">
+                    <h2>ATTACK SEQUENCE</h2>
+                    <span class="attack-flow-badge" id="phase-counter">0 / {{ article.key_points|length }} PHASES</span>
+                </div>
+                <div class="attack-flow-progress">
+                    <div class="attack-flow-progress-bar" id="progress-bar"></div>
+                </div>
+                <div class="attack-flow-timeline" id="attack-timeline">
+                    {% for step in article.key_points %}
+                    <div class="phase-node-group {% if loop.first %}first-phase{% endif %}" data-phase-index="{{ loop.index0 }}">
+                        <div class="phase-node {% if loop.first %}active{% else %}locked{% endif %}"></div>
+                        <div class="phase-connector {% if loop.last %}last{% endif %}"></div>
+                        <div class="phase-card {% if loop.first %}active{% else %}locked{% endif %}" data-phase="{{ step.phase }}">
+                            <div class="phase-card-header">
+                                <span class="phase-number">#{{ loop.index }}</span>
+                                <span class="phase-name">{{ step.phase | upper }}</span>
+                                {% if step.technique %}
+                                <span class="phase-technique">{{ step.technique }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="phase-card-body">
+                                <h3 class="phase-title">{{ step.title }}</h3>
+                                <p class="phase-description">{{ step.description }}</p>
+                            </div>
+                            <div class="phase-lock-overlay">
+                                <span class="lock-icon">&#x1F512;</span>
+                                <span class="lock-text">CLASSIFIED</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="sequence-complete" id="sequence-complete">
+                    <span class="complete-icon">&#x2713;</span>
+                    <span class="complete-text">SEQUENCE COMPLETE</span>
+                </div>
+                <div class="attack-flow-nav" id="attack-flow-nav">
+                    <button class="btn-next-phase" id="btn-next-phase" onclick="revealNextPhase()">
+                        NEXT PHASE &raquo;
+                    </button>
+                    <button class="btn-reveal-all" id="btn-reveal-all" onclick="revealAllPhases()">
+                        REVEAL ALL
+                    </button>
+                </div>
+            </section>
+            {% else %}
+            {# Legacy key_points format (string array) #}
+            <section class="article-section">
+                <h2>Key Points</h2>
+                <ul class="key-points-list">
+                    {% for point in article.key_points %}
+                    <li>{{ point }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+            {% endif %}
+        {% endif %}
+
+        {% if article.novelty_notes %}
+        <section class="article-section">
+            <h2>What's Notable</h2>
+            <p class="novelty-text">{{ article.novelty_notes }}</p>
+        </section>
+        {% endif %}
+
+        <div class="article-actions">
+            <a href="{{ article.url }}" target="_blank" rel="noopener" class="btn btn-primary">
+                Read Original Article &rarr;
+            </a>
+        </div>
+
+        {% if article.model_used %}
+        <div class="article-ai-note">
+            Summary generated by {{ article.model_used }}
+        </div>
+        {% endif %}
+    </article>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const el = document.getElementById('summary-markdown');
+        if (el && typeof marked !== 'undefined') {
+            el.innerHTML = marked.parse(el.textContent);
+        }
+
+        // Initialize attack flow if present
+        if (document.getElementById('attack-flow')) {
+            initAttackFlow();
+        }
+    });
+
+    let currentPhase = 0;
+    let totalPhases = 0;
+
+    function initAttackFlow() {
+        const groups = document.querySelectorAll('.phase-node-group');
+        totalPhases = groups.length;
+        if (totalPhases === 0) return;
+
+        // First phase is already revealed
+        currentPhase = 1;
+        updateProgress();
+
+        // If only one phase, complete immediately
+        if (totalPhases === 1) {
+            onSequenceComplete();
+        }
+    }
+
+    function revealNextPhase() {
+        if (currentPhase >= totalPhases) return;
+
+        const group = document.querySelector(`.phase-node-group[data-phase-index="${currentPhase}"]`);
+        if (!group) return;
+
+        const node = group.querySelector('.phase-node');
+        const card = group.querySelector('.phase-card');
+
+        // Remove locked, add active with animation
+        node.classList.remove('locked');
+        node.classList.add('active');
+        card.classList.remove('locked');
+        card.classList.add('active', 'revealing');
+
+        // Demote previous active to revealed
+        if (currentPhase > 0) {
+            const prevGroup = document.querySelector(`.phase-node-group[data-phase-index="${currentPhase - 1}"]`);
+            if (prevGroup) {
+                prevGroup.querySelector('.phase-node').classList.remove('active');
+                prevGroup.querySelector('.phase-node').classList.add('revealed');
+                prevGroup.querySelector('.phase-card').classList.remove('active');
+                prevGroup.querySelector('.phase-card').classList.add('revealed');
+            }
+        }
+
+        currentPhase++;
+        updateProgress();
+
+        // Remove revealing class after animation
+        setTimeout(() => card.classList.remove('revealing'), 600);
+
+        if (currentPhase >= totalPhases) {
+            onSequenceComplete();
+        }
+    }
+
+    function revealAllPhases() {
+        const groups = document.querySelectorAll('.phase-node-group');
+        groups.forEach((group, i) => {
+            const node = group.querySelector('.phase-node');
+            const card = group.querySelector('.phase-card');
+            node.classList.remove('locked', 'active');
+            node.classList.add('revealed');
+            card.classList.remove('locked', 'active');
+            card.classList.add('revealed');
+        });
+        currentPhase = totalPhases;
+        updateProgress();
+        onSequenceComplete();
+    }
+
+    function updateProgress() {
+        const pct = totalPhases > 0 ? (currentPhase / totalPhases) * 100 : 0;
+        const bar = document.getElementById('progress-bar');
+        if (bar) bar.style.width = pct + '%';
+
+        const counter = document.getElementById('phase-counter');
+        if (counter) counter.textContent = `${currentPhase} / ${totalPhases} PHASES`;
+    }
+
+    function onSequenceComplete() {
+        const nav = document.getElementById('attack-flow-nav');
+        if (nav) nav.style.display = 'none';
+
+        const banner = document.getElementById('sequence-complete');
+        if (banner) banner.classList.add('visible');
+    }
+</script>
+{% endblock %}

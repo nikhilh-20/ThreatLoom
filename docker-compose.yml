@@ -1,0 +1,13 @@
+services:
+  threat-loom:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+      - DATA_DIR=/app/data
+      - OPENAI_API_KEY=        # Set your OpenAI API key
+      - MALPEDIA_API_KEY=      # Optional: set your Malpedia API key

@@ -1,0 +1,14 @@
+venv/
+site/
+data/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+*.db
+config.json
+docs/
+mkdocs.yml
+README.md
+run.bat
+*.md

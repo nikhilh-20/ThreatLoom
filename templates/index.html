@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Category overview (default view) -->
+<div id="categories-view">
+    <div class="categories-grid" id="categories-grid"></div>
+    <div class="loading-skeleton" id="categories-skeleton" style="display:none;">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+    </div>
+</div>
+
+<!-- Category drill-down (shows articles for selected category) -->
+<div id="drilldown-view" style="display:none;">
+    <div class="drilldown-header">
+        <button class="btn btn-secondary btn-sm" id="drilldown-back" onclick="drilldownBack()">&larr; Back</button>
+        <h2 class="drilldown-title" id="drilldown-title"></h2>
+        <span class="drilldown-breadcrumb" id="drilldown-breadcrumb" style="display:none;"></span>
+        <span class="category-count" id="drilldown-count"></span>
+        <button class="btn btn-secondary btn-sm" id="insight-btn" onclick="loadCategoryInsight()" style="margin-left:auto">
+            <span class="btn-icon">&#128200;</span> Trend &amp; Forecast
+        </button>
+    </div>
+    <div id="insight-panel" class="insight-panel" style="display:none;">
+        <div id="insight-loading" class="insight-loading" style="display:none;">
+            <div class="skeleton-card" style="height:60px;margin-bottom:8px;"></div>
+            <p class="insight-loading-text">Analyzing articles with AI...</p>
+        </div>
+        <div id="insight-content" style="display:none;">
+            <div class="insight-section">
+                <h3 class="insight-heading">Trend Analysis</h3>
+                <div class="markdown-body" id="insight-trend"></div>
+            </div>
+            <div class="insight-section">
+                <h3 class="insight-heading">Forecast</h3>
+                <div class="markdown-body" id="insight-forecast"></div>
+            </div>
+            <p class="insight-meta" id="insight-meta"></p>
+        </div>
+        <div id="insight-error" class="insight-error" style="display:none;"></div>
+    </div>
+    <div class="categories-grid" id="subcategories-grid" style="display:none;"></div>
+    <div class="articles-grid" id="drilldown-grid"></div>
+</div>
+
+<!-- Search results (flat list) -->
+<div id="search-view" style="display:none;">
+    <div class="drilldown-header">
+        <button class="btn btn-secondary btn-sm" onclick="clearSearch()">&larr; Back</button>
+        <h2 class="drilldown-title" id="search-title">Search Results</h2>
+    </div>
+    <div class="articles-grid" id="articles-grid"></div>
+    <div class="load-more-wrapper" id="load-more-wrapper" style="display:none;">
+        <button class="btn btn-secondary" id="load-more-btn" onclick="loadMore()">Load More</button>
+    </div>
+</div>
+
+<div class="empty-state" id="empty-state" style="display:none;">
+    <div class="empty-icon">&#128240;</div>
+    <h2>No articles yet</h2>
+    <p>Click <strong>Refresh</strong> to fetch articles from your configured feeds.</p>
+    <p id="api-key-warning" style="display:none;">
+        You haven't set an OpenAI API key yet. Visit <a href="/settings">Settings</a> to configure it for AI-powered summaries.
+    </p>
+</div>
+
+<div class="loading-skeleton" id="loading-skeleton" style="display:none;">
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+    <div class="skeleton-card"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSources();
+        loadCategories();
+        loadStats();
+    });
+</script>
+{% endblock %}

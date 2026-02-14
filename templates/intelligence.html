@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Intelligence - Threat Loom{% endblock %}
+
+{% block content %}
+<div class="intelligence-page">
+    <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+            <div class="welcome-screen" id="welcome-screen">
+                <div class="welcome-icon">&#128270;</div>
+                <h2>Intelligence Search & Analysis</h2>
+                <p>Ask questions about your threat intelligence database. Search for articles by meaning or get analytical insights synthesized from your collected data.</p>
+                <div class="embedding-status" id="embedding-status"></div>
+                <div class="suggestion-chips">
+                    <button class="suggestion-chip" onclick="useSuggestion(this)">Show me recent ransomware articles involving data exfiltration</button>
+                    <button class="suggestion-chip" onclick="useSuggestion(this)">What are the most common initial access techniques used by threat actors?</button>
+                    <button class="suggestion-chip" onclick="useSuggestion(this)">Find articles about supply chain attacks targeting open source packages</button>
+                    <button class="suggestion-chip" onclick="useSuggestion(this)">What malware families have been using living-off-the-land techniques?</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-area">
+            <div class="chat-input-wrapper">
+                <textarea id="chat-input" class="chat-input" placeholder="Ask about your threat intelligence..." rows="1"></textarea>
+                <button class="chat-send-btn" id="chat-send-btn" onclick="sendMessage()">
+                    <span>&#10148;</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const sendBtn = document.getElementById('chat-send-btn');
+const welcomeScreen = document.getElementById('welcome-screen');
+
+let conversationHistory = [];
+let isProcessing = false;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    loadEmbeddingStatus();
+    autoResizeTextarea();
+});
+
+function loadEmbeddingStatus() {
+    fetch('/api/intelligence/status')
+        .then(r => r.json())
+        .then(data => {
+            const el = document.getElementById('embedding-status');
+            if (data.total_embedded === 0) {
+                el.innerHTML = '<span class="status-warning">No articles indexed yet. Run a refresh to generate embeddings for your articles.</span>';
+            } else {
+                el.innerHTML = '<span class="status-ok">' + data.total_embedded + ' of ' + data.total_summarized + ' articles indexed for semantic search</span>';
+            }
+        })
+        .catch(() => {});
+}
+
+function autoResizeTextarea() {
+    chatInput.addEventListener('input', () => {
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 150) + 'px';
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+}
+
+function useSuggestion(btn) {
+    chatInput.value = btn.textContent;
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 150) + 'px';
+    sendMessage();
+}
+
+function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text || isProcessing) return;
+
+    // Hide welcome screen
+    if (welcomeScreen) {
+        welcomeScreen.style.display = 'none';
+    }
+
+    // Add user message
+    appendMessage('user', text);
+    conversationHistory.push({ role: 'user', content: text });
+
+    // Keep last 10 messages
+    if (conversationHistory.length > 10) {
+        conversationHistory = conversationHistory.slice(-10);
+    }
+
+    // Clear input
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+
+    // Show loading
+    const loadingEl = appendLoading();
+    isProcessing = true;
+    sendBtn.disabled = true;
+
+    fetch('/api/intelligence/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: conversationHistory }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        loadingEl.remove();
+
+        if (data.error === 'no_api_key') {
+            appendMessage('assistant', 'OpenAI API key is not configured. Please add your API key in [Settings](/settings) to use Intelligence search.', []);
+        } else if (data.error) {
+            appendMessage('assistant', 'An error occurred: ' + escHtml(data.error), []);
+        } else {
+            appendMessage('assistant', data.response || 'No response generated.', data.articles || []);
+            conversationHistory.push({ role: 'assistant', content: data.response || '' });
+            if (conversationHistory.length > 10) {
+                conversationHistory = conversationHistory.slice(-10);
+            }
+        }
+    })
+    .catch(err => {
+        loadingEl.remove();
+        appendMessage('assistant', 'Failed to connect to the server. Please try again.', []);
+    })
+    .finally(() => {
+        isProcessing = false;
+        sendBtn.disabled = false;
+        chatInput.focus();
+    });
+}
+
+function appendMessage(role, content, articles) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-message chat-message-' + role;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble message-bubble-' + role;
+
+    if (role === 'assistant') {
+        // Render markdown
+        bubble.innerHTML = '<div class="markdown-body">' + marked.parse(content || '') + '</div>';
+    } else {
+        bubble.textContent = content;
+    }
+
+    msgDiv.appendChild(bubble);
+
+    // Add citation cards for assistant messages with articles
+    if (role === 'assistant' && articles && articles.length > 0) {
+        const cardsContainer = document.createElement('div');
+        cardsContainer.className = 'citation-cards';
+
+        articles.forEach(art => {
+            const card = createCitationCard(art);
+            cardsContainer.appendChild(card);
+        });
+
+        msgDiv.appendChild(cardsContainer);
+    }
+
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return msgDiv;
+}
+
+function appendLoading() {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-message chat-message-assistant';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble message-bubble-assistant loading-bubble';
+    bubble.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div><span class="loading-text">Searching articles...</span>';
+
+    msgDiv.appendChild(bubble);
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return msgDiv;
+}
+
+function createCitationCard(article) {
+    const card = document.createElement('a');
+    card.className = 'citation-card';
+    card.href = '/article/' + article.id;
+    card.target = '_blank';
+
+    const score = article.relevance_score || 0;
+    const scorePercent = Math.round(score * 100);
+    const date = article.published_date ? new Date(article.published_date).toLocaleDateString() : '';
+    const source = escHtml(article.source_name || '');
+    const title = escHtml(article.title || 'Untitled');
+
+    let tags = article.tags || '[]';
+    if (typeof tags === 'string') {
+        try { tags = JSON.parse(tags); } catch(e) { tags = []; }
+    }
+    const tagsHtml = tags.slice(0, 3).map(t => '<span class="citation-tag">' + escHtml(t) + '</span>').join('');
+
+    card.innerHTML =
+        '<div class="citation-card-header">' +
+            '<span class="citation-score">' + scorePercent + '%</span>' +
+            '<span class="citation-source">' + source + '</span>' +
+            (date ? '<span class="citation-date">' + date + '</span>' : '') +
+        '</div>' +
+        '<div class="citation-title">' + title + '</div>' +
+        (tagsHtml ? '<div class="citation-tags">' + tagsHtml + '</div>' : '');
+
+    return card;
+}
+</script>
+{% endblock %}
