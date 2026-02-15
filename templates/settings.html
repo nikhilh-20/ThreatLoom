@@ -47,6 +47,51 @@
     </section>
 
     <section class="settings-section">
+        <h2>Email Notifications</h2>
+        <p class="form-hint" style="margin-bottom:16px;">Receive an email for each newly summarized article. Requires an SMTP server (Gmail, Outlook, SendGrid, etc.).</p>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" id="email-enabled" class="feed-toggle" {% if config.email_notifications_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+            <span style="font-size:0.9rem;color:var(--text-primary);font-weight:500;">Enable email notifications</span>
+        </div>
+        <div class="form-group">
+            <label for="notification-email">Recipient Email</label>
+            <input type="email" id="notification-email" class="form-input" placeholder="you@example.com" value="{{ config.notification_email or '' }}">
+        </div>
+        <div class="form-row" style="margin-bottom:16px;">
+            <div class="form-group" style="flex:3;margin-bottom:0;">
+                <label for="smtp-host">SMTP Host</label>
+                <input type="text" id="smtp-host" class="form-input" placeholder="smtp.gmail.com" value="{{ config.smtp_host or '' }}">
+            </div>
+            <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0;">
+                <label for="smtp-port">Port</label>
+                <input type="number" id="smtp-port" class="form-input" placeholder="587" value="{{ config.smtp_port or 587 }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="smtp-username">SMTP Username</label>
+            <input type="text" id="smtp-username" class="form-input" placeholder="you@example.com" value="{{ config.smtp_username or '' }}">
+        </div>
+        <div class="form-group">
+            <label for="smtp-password">SMTP Password</label>
+            <input type="password" id="smtp-password" class="form-input" placeholder="App password or SMTP password" value="{{ config.smtp_password or '' }}">
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" id="smtp-tls" class="feed-toggle" {% if config.smtp_use_tls is not defined or config.smtp_use_tls %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+            <span style="font-size:0.87rem;color:var(--text-secondary);">Use STARTTLS</span>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <button class="btn btn-primary" id="test-email-btn" onclick="testEmail()"><span class="btn-icon">&#9993;</span> Send Test Email</button>
+            <span class="form-hint" id="test-email-status"></span>
+        </div>
+    </section>
+
+    <section class="settings-section">
         <h2>Fetch Settings</h2>
         <div class="form-group">
             <label for="fetch-interval">Auto-fetch interval: <span id="interval-value">{{ config.fetch_interval_minutes }}</span> minutes</label>
@@ -58,7 +103,7 @@
             <button class="btn btn-primary" id="manual-refresh-btn" onclick="triggerRefresh()">
                 <span class="btn-icon">&#8635;</span> Refresh Now
             </button>
-            <button class="btn btn-secondary" id="refresh-since-btn" onclick="refreshSinceLastRetrieval()">
+            <button class="btn btn-primary refresh-since-btn" onclick="refreshSinceLastRetrieval()">
                 <span class="btn-icon">&#8635;</span> Refresh Since Last Retrieval
             </button>
             <span class="refresh-status" id="settings-refresh-status"></span>

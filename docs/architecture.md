@@ -17,13 +17,13 @@ Threat Loom is a monolithic Python application with a clear separation of concer
 │  REST API:  /api/articles · /api/refresh · /api/intelligence/*  │
 └──────┬───────────────┬───────────────┬───────────────┬───────────┘
        │               │               │               │
-┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐
-│ scheduler   │ │ summarizer  │ │ embeddings  │ │intelligence │
-│             │ │             │ │             │ │             │
-│ APScheduler │ │ OpenAI Chat │ │ OpenAI Emb  │ │ RAG Chat    │
-│ Pipeline    │ │ Relevance   │ │ Cosine Sim  │ │ Semantic    │
-│ Orchestrate │ │ Insights    │ │ BLOB Store  │ │ Search      │
-└──────┬──────┘ └─────────────┘ └─────────────┘ └─────────────┘
+┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌───────────┐
+│ scheduler   │ │ summarizer  │ │ embeddings  │ │intelligence │ │ notifier  │
+│             │ │             │ │             │ │             │ │           │
+│ APScheduler │ │ OpenAI Chat │ │ OpenAI Emb  │ │ RAG Chat    │ │ Email     │
+│ Pipeline    │ │ Relevance   │ │ Cosine Sim  │ │ Semantic    │ │ Alerts    │
+│ Orchestrate │ │ Insights    │ │ BLOB Store  │ │ Search      │ │ (SMTP)    │
+└──────┬──────┘ └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘
        │
 ┌──────▼──────────────────────────────────────────────────────────┐
 │                    Data Ingestion Layer                          │
@@ -55,7 +55,9 @@ Every pipeline run — whether triggered manually or by the scheduler — execut
        │
 5. Summarize         LLM generates structured summary + tags
        │
-6. Embed             Generate vector embeddings for search
+6. Notify            Send email alert per article (if enabled)
+       │
+7. Embed             Generate vector embeddings for search
 ```
 
 Each stage operates on articles the previous stage produced. Stages are idempotent — rerunning the pipeline only processes new or unprocessed articles.
@@ -69,6 +71,7 @@ Each stage operates on articles the previous stage produced. Stages are idempote
 | Fetch Malpedia | `malpedia_fetcher.py` | 25 titles | Parse BibTeX, relevance filter, insert articles |
 | Scrape | `article_scraper.py` | 10 articles | Download HTML, extract text via trafilatura |
 | Summarize | `summarizer.py` | 10 articles | Generate summary, tags, attack flow via OpenAI |
+| Notify | `notifier.py` | Per article | Send email notification for each summarized article (if enabled) |
 | Embed | `embeddings.py` | 50 articles | Generate 1536-dim vectors via text-embedding-3-small |
 
 ## Module Responsibilities
@@ -100,6 +103,10 @@ Three core functions:
 - **Relevance classification** — Batch-classify article titles as relevant/irrelevant for threat intelligence
 - **Article summarization** — Generate structured JSON (executive summary, novelty, details, mitigations, tags, attack flow)
 - **Category insights** — Produce trend analysis and 3-6 month forecasts for threat categories
+
+### `notifier.py` — Email Notifications
+
+Sends per-article email alerts after successful summarization. Builds inline-CSS HTML emails with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original article. Uses only Python stdlib (`smtplib`, `email.mime`) — no external dependencies. Errors are logged but never raised, so email failures cannot block the pipeline. Supports STARTTLS on port 587 by default.
 
 ### `embeddings.py` — Vector Search
 

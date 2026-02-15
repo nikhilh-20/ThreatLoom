@@ -46,6 +46,13 @@ def get_default_config():
             {"name": "The Record", "url": "https://therecord.media/feed", "enabled": True},
             {"name": "Schneier on Security", "url": "https://www.schneier.com/feed/atom/", "enabled": True},
         ],
+        "smtp_host": "",
+        "smtp_port": 587,
+        "smtp_username": "",
+        "smtp_password": "",
+        "smtp_use_tls": True,
+        "notification_email": "",
+        "email_notifications_enabled": False,
     }
 
 
@@ -69,6 +76,23 @@ def load_config():
     env_malpedia = os.environ.get("MALPEDIA_API_KEY")
     if env_malpedia:
         config["malpedia_api_key"] = env_malpedia
+
+    env_smtp_host = os.environ.get("SMTP_HOST")
+    if env_smtp_host:
+        config["smtp_host"] = env_smtp_host
+    env_smtp_port = os.environ.get("SMTP_PORT")
+    if env_smtp_port:
+        config["smtp_port"] = int(env_smtp_port)
+    env_smtp_user = os.environ.get("SMTP_USERNAME")
+    if env_smtp_user:
+        config["smtp_username"] = env_smtp_user
+    env_smtp_pass = os.environ.get("SMTP_PASSWORD")
+    if env_smtp_pass:
+        config["smtp_password"] = env_smtp_pass
+    env_notif_email = os.environ.get("NOTIFICATION_EMAIL")
+    if env_notif_email:
+        config["notification_email"] = env_notif_email
+        config["email_notifications_enabled"] = True
 
     return config
 

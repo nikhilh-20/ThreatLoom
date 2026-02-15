@@ -66,7 +66,7 @@ All runtime dependencies are vulnerability-free as of this scan date:
 bandit -r . --exclude ./venv,./site,./__pycache__ -f json
 ```
 
-**Total lines scanned:** 3,538 across 11 files
+**Total lines scanned:** 4,519 across 12 files
 
 ### Findings
 
@@ -103,8 +103,9 @@ The f-string interpolates only the `?` placeholder string (e.g., `?,?,?`), not u
 
 | File | Lines |
 |---|---|
-| app.py | 381 |
-| config.py | 56 |
+| app.py | 547 |
+| config.py | 107 |
+| notifier.py | 164 |
 | article_scraper.py | 127 |
 | embeddings.py | 153 |
 | feed_fetcher.py | 192 |
@@ -112,7 +113,7 @@ The f-string interpolates only the `?` placeholder string (e.g., `?,?,?`), not u
 | malpedia_fetcher.py | 169 |
 | mitre_data.py | 957 |
 | scheduler.py | 109 |
-| summarizer.py | 348 |
+| summarizer.py | 446 |
 
 ---
 
@@ -137,9 +138,10 @@ The scan checked for:
 
 **Design notes:**
 
-- API keys are stored in `data/config.json` (excluded from Docker image via `.dockerignore`) or passed via environment variables
+- API keys and SMTP credentials are stored in `data/config.json` (excluded from Docker image via `.dockerignore`) or passed via environment variables
 - No secrets are hardcoded in source code
 - The `config.json` template in docs uses placeholder values (`sk-proj-your-key-here`)
+- SMTP passwords are stored in plaintext in `config.json`, consistent with the existing pattern for API keys. For Docker deployments, prefer environment variables (`SMTP_PASSWORD`)
 
 ---
 
@@ -223,6 +225,7 @@ Docker Scout recommends `python:3.14-alpine` as an alternative base image, which
 - [ ] Pin dependency versions in `requirements.txt` for reproducible builds (currently using `>=` minimum version constraints)
 - [ ] Consider adding `bandit` to a pre-commit hook or CI pipeline
 - [ ] Consider adding a `.secrets.baseline` file for `detect-secrets` to track known false positives over time
+- [ ] Consider encrypting SMTP credentials at rest in `config.json` (currently plaintext, matching the existing API key pattern)
 
 ---
 

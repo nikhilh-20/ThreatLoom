@@ -62,6 +62,14 @@ Category-level trend analysis with 3-6 month forecasts. Drill into threat actors
 
 </div>
 
+<div class="feature-card" markdown>
+
+### :material-email-alert-outline: Email Alerts
+
+Per-article email notifications with full structured analysis. Configure any SMTP provider — Gmail, Outlook, SendGrid, and more.
+
+</div>
+
 </div>
 
 ---

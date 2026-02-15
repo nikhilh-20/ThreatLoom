@@ -406,9 +406,18 @@ Save configuration settings.
       "url": "https://feeds.feedburner.com/TheHackersNews",
       "enabled": true
     }
-  ]
+  ],
+  "email_notifications_enabled": true,
+  "notification_email": "you@example.com",
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_username": "you@gmail.com",
+  "smtp_password": "app-password",
+  "smtp_use_tls": true
 }
 ```
+
+All email fields are optional. Omitted fields retain their current saved values.
 
 **Response**
 
@@ -459,5 +468,44 @@ Validate a Malpedia API key.
 ```json
 {
   "valid": true
+}
+```
+
+---
+
+### POST `/api/test-email`
+
+Send a test email notification. Accepts SMTP settings directly from the request body so you can test before saving.
+
+**Request Body**
+
+```json
+{
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_username": "you@gmail.com",
+  "smtp_password": "app-password",
+  "smtp_use_tls": true,
+  "notification_email": "you@example.com"
+}
+```
+
+If the body is empty or `smtp_host` is not provided, falls back to saved config settings.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "error": null
+}
+```
+
+On failure:
+
+```json
+{
+  "success": false,
+  "error": "Connection refused"
 }
 ```

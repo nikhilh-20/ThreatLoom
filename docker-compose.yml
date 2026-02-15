@@ -11,3 +11,8 @@ services:
       - DATA_DIR=/app/data
       - OPENAI_API_KEY=        # Set your OpenAI API key
       - MALPEDIA_API_KEY=      # Optional: set your Malpedia API key
+      # - SMTP_HOST=smtp.gmail.com
+      # - SMTP_PORT=587
+      # - SMTP_USERNAME=you@gmail.com
+      # - SMTP_PASSWORD=your-app-password
+      # - NOTIFICATION_EMAIL=you@gmail.com

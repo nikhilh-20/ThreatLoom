@@ -236,6 +236,17 @@ def api_settings():
         if "feeds" in data:
             config["feeds"] = data["feeds"]
 
+        # Email notification settings
+        for key in ("smtp_host", "smtp_username", "smtp_password", "notification_email"):
+            if key in data:
+                config[key] = data[key]
+        if "smtp_port" in data:
+            config["smtp_port"] = int(data["smtp_port"])
+        if "smtp_use_tls" in data:
+            config["smtp_use_tls"] = bool(data["smtp_use_tls"])
+        if "email_notifications_enabled" in data:
+            config["email_notifications_enabled"] = bool(data["email_notifications_enabled"])
+
         save_config(config)
 
         # Sync sources to database
@@ -300,6 +311,31 @@ def api_test_malpedia_key():
         return jsonify({"valid": False, "error": f"HTTP {resp.status_code}"})
     except Exception as e:
         return jsonify({"valid": False, "error": str(e)})
+
+
+@app.route("/api/test-email", methods=["POST"])
+def api_test_email():
+    """Send a test email notification.
+
+    Returns:
+        JSON with ``success`` boolean and optional ``error`` string.
+    """
+    from notifier import send_test_email
+
+    data = request.get_json(silent=True) or {}
+    smtp_cfg = None
+    if data.get("smtp_host"):
+        smtp_cfg = {
+            "host": data["smtp_host"],
+            "port": int(data.get("smtp_port", 587)),
+            "username": data.get("smtp_username", ""),
+            "password": data.get("smtp_password", ""),
+            "use_tls": bool(data.get("smtp_use_tls", True)),
+            "recipient": data.get("notification_email", ""),
+        }
+
+    success, error = send_test_email(smtp_cfg=smtp_cfg)
+    return jsonify({"success": success, "error": error})
 
 
 @app.route("/api/subcategories")

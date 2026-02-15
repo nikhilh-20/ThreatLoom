@@ -250,6 +250,7 @@ def summarize_article(title, content):
                 "tags": result.get("tags", []),
                 "attack_flow": result.get("attack_flow", []),
                 "novelty": result.get("novelty", ""),
+                "raw_data": result,
             }
 
         except RateLimitError:
@@ -405,6 +406,7 @@ def summarize_pending(limit=10):
         title = article["title"]
         content = article["content_raw"]
         article_id = article["id"]
+        article_url = article.get("url", "")
 
         logger.info(f"Summarizing article {article_id}: {title[:60]}")
         result = summarize_article(title, content)
@@ -422,6 +424,12 @@ def summarize_pending(limit=10):
             )
             summarized += 1
             logger.info(f"  Summarized article {article_id}")
+
+            try:
+                from notifier import send_article_notification
+                send_article_notification(title, article_url, result.get("raw_data", {}))
+            except Exception as e:
+                logger.debug(f"  Notification skipped for article {article_id}: {e}")
         else:
             # Save a failed marker so this article isn't retried forever
             save_summary(

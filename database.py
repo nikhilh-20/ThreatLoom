@@ -341,12 +341,12 @@ def get_unsummarized_articles(limit=10):
         limit: Maximum number of articles to return.
 
     Returns:
-        List of dicts with ``id``, ``title``, and ``content_raw``.
+        List of dicts with ``id``, ``title``, ``url``, and ``content_raw``.
     """
     conn = get_connection()
     rows = conn.execute(
         """
-        SELECT a.id, a.title, a.content_raw
+        SELECT a.id, a.title, a.url, a.content_raw
         FROM articles a
         LEFT JOIN summaries sm ON sm.article_id = a.id
         WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''

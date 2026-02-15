@@ -120,6 +120,11 @@ The app will be available at **http://localhost:5000**.
 | `HOST` | `0.0.0.0` | Bind address (set by Dockerfile) |
 | `PORT` | `5000` | Listen port |
 | `DATA_DIR` | `./data` (standalone) or `/app/data` (Docker) | Directory for `config.json` and `threatlandscape.db` |
+| `SMTP_HOST` | — | SMTP server hostname (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USERNAME` | — | SMTP login username |
+| `SMTP_PASSWORD` | — | SMTP login password or app password |
+| `NOTIFICATION_EMAIL` | — | Recipient email address (auto-enables notifications when set) |
 
 ### Data Persistence
 

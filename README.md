@@ -15,6 +15,8 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 - **Attack Flow Visualization** — Interactive kill chain timeline showing phase-by-phase attack sequences with MITRE tactic/technique mapping and progressive reveal.
 - **Semantic Search** — RAG-powered chat interface. Ask questions in natural language and get answers grounded in your article database with citation cards.
 - **Trend Forecasting** — Category-level trend analysis with 3-6 month outlooks. Drill into specific threat actors, malware families, and offensive tooling.
+- **Email Notifications** — Per-article email alerts with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original source. Configure any SMTP provider (Gmail, Outlook, SendGrid). Uses only Python stdlib — no extra dependencies.
+
 - **Automatic Categorization** — Articles are sorted into 9 threat categories (Malware, Vulnerabilities, Threat Actors, Phishing, Supply Chain, etc.) with entity-level subcategories for 300+ MITRE ATT&CK groups and software families.
 
 ## Requirements
@@ -100,6 +102,11 @@ API keys and server settings can be configured via environment variables, which 
 | `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | auto-detect | Listen port (`5000` in Docker) |
 | `DATA_DIR` | `./data` | Directory for `config.json` and `threatlandscape.db` (`/app/data` in Docker) |
+| `SMTP_HOST` | — | SMTP server hostname (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | `587` | SMTP server port |
+| `SMTP_USERNAME` | — | SMTP login username |
+| `SMTP_PASSWORD` | — | SMTP login password or app password |
+| `NOTIFICATION_EMAIL` | — | Recipient email (auto-enables notifications when set) |
 
 ### Setting up your API key
 
@@ -158,6 +165,8 @@ RSS Feeds / Malpedia
        |
  AI Summarization (structured JSON → markdown)
        |
+ Email Notification (per article, if enabled)
+       |
  Vector Embeddings (text-embedding-3-small)
        |
  Browse · Search · Forecast
@@ -169,7 +178,8 @@ RSS Feeds / Malpedia
 2. **Malpedia** — Parse BibTeX bibliography, same relevance filtering (requires API key)
 3. **Scrape** — Download article HTML using browser-like headers, extract text with trafilatura (30s timeout per article)
 4. **Summarize** — Generate structured summary with executive overview, novelty, details, mitigations, tags, and attack flow (12,000 char input limit)
-5. **Embed** — Generate 1536-dim vectors for semantic search (batches of 50)
+5. **Notify** — Send email alert with the full analysis for each summarized article (if enabled; failures never block the pipeline)
+6. **Embed** — Generate 1536-dim vectors for semantic search (batches of 50)
 
 Each stage only processes new/unprocessed articles. The pipeline is non-blocking — browse while it runs.
 
@@ -184,6 +194,7 @@ feed_fetcher.py       # RSS/Atom feed ingestion with relevance filtering
 malpedia_fetcher.py   # Malpedia BibTeX research ingestion
 article_scraper.py    # HTML download and text extraction (trafilatura)
 summarizer.py         # LLM summarization, relevance checks, trend insights
+notifier.py           # Email notifications via SMTP (stdlib only)
 embeddings.py         # Vector embedding generation and cosine similarity search
 intelligence.py       # RAG chat system (retrieval + LLM response)
 mitre_data.py         # MITRE ATT&CK entity lookup tables
@@ -245,9 +256,10 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/api/settings` | Save configuration |
+| POST | `/api/settings` | Save configuration (including email notification settings) |
 | POST | `/api/test-key` | Validate OpenAI API key |
 | POST | `/api/test-malpedia-key` | Validate Malpedia API key |
+| POST | `/api/test-email` | Send test email notification (accepts SMTP settings in body) |
 
 ## Database
 

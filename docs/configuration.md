@@ -67,6 +67,20 @@ To get a key:
 2. Navigate to your profile
 3. Generate an API token
 
+### Email Notifications
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `email_notifications_enabled` | boolean | `false` | Enable per-article email alerts. |
+| `notification_email` | string | `""` | Recipient email address. |
+| `smtp_host` | string | `""` | SMTP server hostname (e.g. `smtp.gmail.com`). |
+| `smtp_port` | integer | `587` | SMTP server port. |
+| `smtp_username` | string | `""` | SMTP login username. |
+| `smtp_password` | string | `""` | SMTP login password or app password. |
+| `smtp_use_tls` | boolean | `true` | Use STARTTLS encryption. |
+
+See [Email Notifications](features/email-notifications.md) for setup guides and common SMTP provider configurations.
+
 ### Feed Management
 
 The `feeds` array contains all RSS/Atom sources:
@@ -145,6 +159,7 @@ The Settings page provides a graphical interface for all configuration:
 - **API Keys** — Enter and test OpenAI and Malpedia keys
 - **Model Selection** — Dropdown for OpenAI model
 - **Fetch Interval** — Slider to adjust pipeline frequency
+- **Email Notifications** — Configure SMTP and test email delivery
 - **Feed Management** — Enable/disable feeds, add/remove custom sources
 - **Refresh Controls** — Trigger manual refresh with lookback period
 - **Clear Database** — Remove all articles and summaries (preserves source list)

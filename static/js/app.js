@@ -656,13 +656,10 @@ async function triggerRefresh() {
 }
 
 async function refreshSinceLastRetrieval() {
-    const btn = document.getElementById('refresh-since-btn');
+    const btns = document.querySelectorAll('.refresh-since-btn');
     const status = document.getElementById('refresh-status') || document.getElementById('settings-refresh-status');
 
-    if (btn) {
-        btn.disabled = true;
-        btn.classList.add('loading');
-    }
+    btns.forEach(b => { b.disabled = true; b.classList.add('loading'); });
     if (status) {
         status.textContent = 'Refreshing since last retrieval...';
         status.className = 'refresh-status';
@@ -678,24 +675,25 @@ async function refreshSinceLastRetrieval() {
 
         if (data.status === 'started') {
             if (status) status.textContent = 'Refresh started, fetching articles since last retrieval...';
-            pollRefreshStatus(btn, status);
+            pollRefreshStatus(btns, status);
         } else if (data.status === 'already_running') {
             if (status) status.textContent = 'Refresh already in progress...';
-            pollRefreshStatus(btn, status);
+            pollRefreshStatus(btns, status);
         }
     } catch (e) {
         if (status) {
             status.textContent = 'Refresh failed';
             status.className = 'refresh-status error';
         }
-        if (btn) {
-            btn.disabled = false;
-            btn.classList.remove('loading');
-        }
+        btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
     }
 }
 
 function pollRefreshStatus(btn, status) {
+    // Normalize btn to an array so callers can pass a single element or a NodeList
+    const btns = btn ? (btn.forEach ? btn : [btn]) : [];
+    const resetBtns = () => btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); });
+
     const MAX_POLL_MS = 5 * 60 * 1000;
     const POLL_INTERVAL = 3000;
     const startTime = Date.now();
@@ -708,10 +706,7 @@ function pollRefreshStatus(btn, status) {
                 status.className = 'refresh-status';
                 setTimeout(() => { status.textContent = ''; }, 5000);
             }
-            if (btn) {
-                btn.disabled = false;
-                btn.classList.remove('loading');
-            }
+            resetBtns();
             cachedCategories = null;
             loadCategories();
             loadStats();
@@ -731,19 +726,13 @@ function pollRefreshStatus(btn, status) {
                     status.className = 'refresh-status';
                     setTimeout(() => { status.textContent = ''; }, 3000);
                 }
-                if (btn) {
-                    btn.disabled = false;
-                    btn.classList.remove('loading');
-                }
+                resetBtns();
                 cachedCategories = null;
                 loadCategories();
             }
         } catch (e) {
             clearInterval(interval);
-            if (btn) {
-                btn.disabled = false;
-                btn.classList.remove('loading');
-            }
+            resetBtns();
         }
     }, POLL_INTERVAL);
 }
@@ -772,12 +761,27 @@ function saveSettings() {
 
     const malpediaKey = document.getElementById('malpedia-key');
 
+    const emailEnabled = document.getElementById('email-enabled');
+    const notificationEmail = document.getElementById('notification-email');
+    const smtpHost = document.getElementById('smtp-host');
+    const smtpPort = document.getElementById('smtp-port');
+    const smtpUsername = document.getElementById('smtp-username');
+    const smtpPassword = document.getElementById('smtp-password');
+    const smtpTls = document.getElementById('smtp-tls');
+
     const settings = {
         openai_api_key: apiKey ? apiKey.value : '',
         malpedia_api_key: malpediaKey ? malpediaKey.value : '',
         openai_model: model ? model.value : 'gpt-4o-mini',
         fetch_interval_minutes: interval ? parseInt(interval.value) : 30,
         feeds: feeds,
+        email_notifications_enabled: emailEnabled ? emailEnabled.checked : false,
+        notification_email: notificationEmail ? notificationEmail.value : '',
+        smtp_host: smtpHost ? smtpHost.value : '',
+        smtp_port: smtpPort ? parseInt(smtpPort.value) || 587 : 587,
+        smtp_username: smtpUsername ? smtpUsername.value : '',
+        smtp_password: smtpPassword ? smtpPassword.value : '',
+        smtp_use_tls: smtpTls ? smtpTls.checked : true,
     };
 
     fetch('/api/settings', {
@@ -943,5 +947,52 @@ async function testMalpediaKey() {
             status.textContent = 'Test failed: ' + e.message;
             status.className = 'form-hint error';
         }
+    }
+}
+
+async function testEmail() {
+    const btn = document.getElementById('test-email-btn');
+    const status = document.getElementById('test-email-status');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add('loading');
+    }
+    if (status) {
+        status.textContent = 'Sending test email...';
+        status.className = 'form-hint';
+    }
+
+    try {
+        const res = await fetch('/api/test-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                smtp_host: (document.getElementById('smtp-host') || {}).value || '',
+                smtp_port: parseInt((document.getElementById('smtp-port') || {}).value) || 587,
+                smtp_username: (document.getElementById('smtp-username') || {}).value || '',
+                smtp_password: (document.getElementById('smtp-password') || {}).value || '',
+                smtp_use_tls: (document.getElementById('smtp-tls') || {}).checked !== false,
+                notification_email: (document.getElementById('notification-email') || {}).value || '',
+            }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            status.textContent = 'Test email sent! Check your inbox.';
+            status.className = 'form-hint success';
+        } else {
+            status.textContent = 'Failed: ' + (data.error || 'Unknown error');
+            status.className = 'form-hint error';
+        }
+    } catch (e) {
+        if (status) {
+            status.textContent = 'Test failed: ' + e.message;
+            status.className = 'form-hint error';
+        }
+    }
+
+    if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('loading');
     }
 }
