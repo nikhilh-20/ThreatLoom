@@ -690,6 +690,16 @@ details[open] > .trend-period-summary::before {
     padding: 8px 0;
 }
 
+.llm-disclaimer {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+    opacity: 0.8;
+}
+
 .insight-error a {
     color: var(--accent-blue);
 }

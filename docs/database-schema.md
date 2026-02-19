@@ -130,6 +130,32 @@ An insight is regenerated when:
 
 ---
 
+### `trend_analyses`
+
+Cached historical trend analysis reports (quarterly and yearly) per category.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INTEGER | PRIMARY KEY | Auto-incrementing ID |
+| `category_name` | TEXT | NOT NULL | Category key: `"Malware"` or `"Threat Actors::apt29"` for subcategories |
+| `period_type` | TEXT | NOT NULL | `"quarterly"` or `"yearly"` |
+| `period_label` | TEXT | NOT NULL | Quarter label (`"2024-Q1"`) or year (`"2024"`) |
+| `trend_text` | TEXT | — | Markdown trend analysis for the period |
+| `article_count` | INTEGER | — | Number of articles used to generate the analysis |
+| `article_hash` | TEXT | — | SHA-256 hash (first 16 chars) of the articles used |
+| `model_used` | TEXT | — | LLM model that generated the analysis |
+| `created_date` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | When the analysis was generated |
+
+**Unique Constraint**
+
+`UNIQUE(category_name, period_type, period_label)` — one cached entry per category per period.
+
+**Cache Invalidation**
+
+A cached entry is regenerated when the `article_hash` doesn't match the current set of articles for that period. There is no TTL — trend analyses are considered stable once generated. When a time-period filter is active, results are generated fresh and not stored here.
+
+---
+
 ### `article_correlations`
 
 Relationships between related articles.
@@ -157,13 +183,15 @@ sources 1──────────* articles
                        │
                        └──*───────* article_correlations
 
-category_insights (standalone, keyed by category_name)
+category_insights  (standalone, keyed by category_name)
+trend_analyses     (standalone, keyed by category_name + period_type + period_label)
 ```
 
 - Each **source** has many **articles**
 - Each **article** has at most one **summary** and one **embedding**
 - **Article correlations** link pairs of articles
 - **Category insights** are independent, keyed by category name string
+- **Trend analyses** are independent, keyed by category name + period type + period label
 
 ## Design Decisions
 

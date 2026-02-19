@@ -20,7 +20,7 @@ Threat Loom is a monolithic Python application with a clear separation of concer
 ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌───────────┐
 │ scheduler   │ │ summarizer  │ │ embeddings  │ │intelligence │ │ notifier  │
 │             │ │             │ │             │ │             │ │           │
-│ APScheduler │ │ OpenAI Chat │ │ OpenAI Emb  │ │ RAG Chat    │ │ Email     │
+│ APScheduler │ │ llm_client  │ │ OpenAI Emb  │ │ RAG Chat    │ │ Email     │
 │ Pipeline    │ │ Relevance   │ │ Cosine Sim  │ │ Semantic    │ │ Alerts    │
 │ Orchestrate │ │ Insights    │ │ BLOB Store  │ │ Search      │ │ (SMTP)    │
 └──────┬──────┘ └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘
@@ -35,7 +35,7 @@ Threat Loom is a monolithic Python application with a clear separation of concer
 ┌──────▼──────────────────────────────────────────────────────────┐
 │                  SQLite (database.py)                            │
 │  sources · articles · summaries · article_embeddings            │
-│  category_insights · article_correlations                       │
+│  category_insights · trend_analyses · article_correlations      │
 │  WAL mode · thread-local connections · strategic indexes        │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -96,13 +96,22 @@ Fetches the Malpedia BibTeX bibliography (~4.5 MB). Parses entries with regex, f
 
 Downloads article HTML using a browser-like `requests.Session` (with fallback to `trafilatura.fetch_url`). Extracts clean text via `trafilatura.extract()`. Each article has a 30-second timeout via ThreadPoolExecutor.
 
+### `llm_client.py` — LLM Provider Abstraction
+
+Provides a unified `LLMClient` interface over OpenAI and Anthropic APIs. Callers pass a prompt and receive a response string — the active provider is selected from config (`llm_provider`). Handles provider-specific API call patterns and error normalisation. Used by `summarizer.py` and `intelligence.py`.
+
+### `cost_tracker.py` — Token & Cost Tracking
+
+Per-session singleton that accumulates input and output token counts across all LLM calls. Provides `add_tokens()` and `get_tokens()` used by `app.py` to compute estimated and actual API costs shown to the user before and after insight/trend generation.
+
 ### `summarizer.py` — AI Analysis
 
-Three core functions:
+Four core functions:
 
 - **Relevance classification** — Batch-classify article titles as relevant/irrelevant for threat intelligence
 - **Article summarization** — Generate structured JSON (executive summary, novelty, details, mitigations, tags, attack flow)
-- **Category insights** — Produce trend analysis and 3-6 month forecasts for threat categories
+- **Forecast insights** — Produce current-trend analysis and 3-6 month forecasts for threat categories
+- **Historical trend analysis** — Multi-pass quarterly + yearly retrospective with cross-period correlation and optional batch condensation for large article sets
 
 ### `notifier.py` — Email Notifications
 
@@ -118,7 +127,7 @@ Retrieval-Augmented Generation system. Takes a user query, runs semantic search 
 
 ### `database.py` — Data Layer
 
-SQLite interface with thread-local connections, WAL mode, and foreign keys. Manages 6 tables plus a categorization layer that maps tags to 9 broad threat categories using keyword rules and MITRE ATT&CK entity lookups.
+SQLite interface with thread-local connections, WAL mode, and foreign keys. Manages 7 tables plus a categorization layer that maps tags to 9 broad threat categories using keyword rules and MITRE ATT&CK entity lookups.
 
 ### `config.py` — Configuration
 
@@ -156,7 +165,7 @@ Main Thread
 |---|---|
 | **Flask** | Lightweight, sufficient for a single-user tool, simple template rendering |
 | **SQLite + WAL** | Zero-config, embedded, WAL enables concurrent reads during writes |
-| **OpenAI API** | Best-in-class for structured summarization, embeddings, and chat |
+| **OpenAI / Anthropic API** | Provider-agnostic LLM calls via `llm_client.py`; OpenAI also used for embeddings |
 | **trafilatura** | Robust article text extraction with broad site compatibility |
 | **feedparser** | Battle-tested RSS/Atom parsing library |
 | **APScheduler** | Simple background scheduling without external dependencies |

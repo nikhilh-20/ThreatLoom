@@ -13,6 +13,7 @@ Threat Loom is a self-hosted threat intelligence platform that **automatically c
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?logo=flask)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai&logoColor=white)
+![Anthropic](https://img.shields.io/badge/Anthropic-Claude-D97757?logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -34,7 +35,7 @@ Threat Loom is a self-hosted threat intelligence platform that **automatically c
 
 ### :material-brain: AI Summarization
 
-Structured summaries with executive overview, novelty assessment, technical details, mitigations, and MITRE ATT&CK tags.
+Structured summaries with executive overview, novelty assessment, technical details, mitigations, and MITRE ATT&CK tags. Supports OpenAI and Anthropic providers.
 
 </div>
 
@@ -56,9 +57,25 @@ RAG-powered intelligence chat. Ask questions in natural language and get answers
 
 <div class="feature-card" markdown>
 
+### :material-chart-bar: Historical Trend Analysis
+
+Quarter-by-quarter and year-by-year retrospectives with cross-period correlation. Collapsible panels per period with key developments and outlook.
+
+</div>
+
+<div class="feature-card" markdown>
+
 ### :material-trending-up: Trend Forecasting
 
-Category-level trend analysis with 3-6 month forecasts. Drill into threat actors, malware families, and tooling.
+Category-level current-trend analysis with 3-6 month forecasts. Drill into threat actors, malware families, and tooling. Cost estimated before generation.
+
+</div>
+
+<div class="feature-card" markdown>
+
+### :material-clock-fast: Time-Period Filter
+
+Filter the feed and all category analyses by 24 h, 7 d, 30 d, or 90 d lookback with one click. Filter propagates to trend analysis and forecast generation.
 
 </div>
 

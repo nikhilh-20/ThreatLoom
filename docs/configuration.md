@@ -10,6 +10,9 @@ On first run, `data/config.json` is created with default values:
 {
   "openai_api_key": "",
   "openai_model": "gpt-4o-mini",
+  "anthropic_api_key": "",
+  "anthropic_model": "claude-haiku-4-5-20251001",
+  "llm_provider": "openai",
   "fetch_interval_minutes": 30,
   "malpedia_api_key": "",
   "feeds": [
@@ -24,14 +27,20 @@ On first run, `data/config.json` is created with default values:
 
 ## Configuration Reference
 
+### LLM Provider
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `llm_provider` | string | `"openai"` | Active LLM provider. Either `"openai"` or `"anthropic"`. |
+
 ### OpenAI Settings
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `openai_api_key` | string | `""` | Your OpenAI API key. Required for summarization, relevance filtering, embeddings, and intelligence chat. |
-| `openai_model` | string | `"gpt-4o-mini"` | Model used for summarization, relevance checks, and insights. |
+| `openai_api_key` | string | `""` | Your OpenAI API key. Required for summarization, relevance filtering, embeddings, and intelligence chat. Also required for embeddings when using the Anthropic provider. |
+| `openai_model` | string | `"gpt-4o-mini"` | OpenAI model used for summarization, relevance checks, and insights. |
 
-#### Model Options
+#### OpenAI Model Options
 
 | Model | Speed | Cost | Quality | Best For |
 |---|---|---|---|---|
@@ -40,10 +49,26 @@ On first run, `data/config.json` is created with default values:
 | `gpt-4-turbo` | Medium | High | Excellent | Complex analysis tasks |
 | `gpt-3.5-turbo` | Fast | Lowest | Adequate | Budget-conscious processing |
 
-!!! tip "Recommendation"
-    Start with `gpt-4o-mini` for the best balance of speed and cost. Switch to `gpt-4o` if you need higher-quality trend analysis and attack flow generation.
+### Anthropic Settings
 
-The embedding model is fixed at `text-embedding-3-small` (1536 dimensions) and is not configurable.
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `anthropic_api_key` | string | `""` | Your Anthropic API key. Used for summarization and insights when `llm_provider` is `"anthropic"`. |
+| `anthropic_model` | string | `"claude-haiku-4-5-20251001"` | Anthropic model used for summarization and insights. |
+
+#### Anthropic Model Options
+
+| Model | Speed | Cost | Quality | Best For |
+|---|---|---|---|---|
+| `claude-haiku-4-5-20251001` | Fast | Low | Good | Daily use, high-volume processing |
+| `claude-sonnet-4-6` | Medium | Medium | Excellent | Higher quality summaries and insights |
+| `claude-opus-4-6` | Medium | High | Best | Highest quality, complex analysis |
+
+!!! tip "Recommendation"
+    Start with `gpt-4o-mini` (OpenAI) or `claude-haiku-4-5-20251001` (Anthropic) for the best balance of speed and cost. Switch to a larger model if you need higher-quality trend analysis and attack flow generation.
+
+!!! info "Embeddings"
+    The embedding model is fixed at `text-embedding-3-small` (1536 dimensions) and always uses OpenAI, regardless of the active `llm_provider`. An OpenAI API key is required even when using Anthropic for summarization.
 
 ### Fetch Settings
 
@@ -156,11 +181,12 @@ Add an entry to the `feeds` array:
 
 The Settings page provides a graphical interface for all configuration:
 
-- **API Keys** — Enter and test OpenAI and Malpedia keys
-- **Model Selection** — Dropdown for OpenAI model
+- **LLM Provider** — Select between OpenAI and Anthropic
+- **API Keys** — Enter and test OpenAI, Anthropic, and Malpedia keys
+- **Model Selection** — Dropdown for the active provider's model
 - **Fetch Interval** — Slider to adjust pipeline frequency
 - **Email Notifications** — Configure SMTP and test email delivery
-- **Feed Management** — Enable/disable feeds, add/remove custom sources
+- **Feed Management** — Enable/disable feeds, add/remove custom sources (http/https URLs only)
 - **Refresh Controls** — Trigger manual refresh with lookback period
 - **Clear Database** — Remove all articles and summaries (preserves source list)
 

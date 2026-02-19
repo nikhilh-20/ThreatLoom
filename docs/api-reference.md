@@ -94,6 +94,7 @@ Get articles grouped by threat category.
 | Param | Type | Default | Description |
 |---|---|---|---|
 | `limit` | integer | `5` | Articles per category |
+| `days` | integer | — | Lookback window in days (e.g. `7` = last 7 days). Omit for all time. |
 
 **Response**
 
@@ -237,6 +238,7 @@ Get entity-level breakdown within a category.
 |---|---|---|---|
 | `category` | string | required | Category name (e.g., "Threat Actors") |
 | `limit` | integer | `5` | Articles per subcategory |
+| `days` | integer | — | Lookback window in days. Omit for all time. |
 
 **Response**
 
@@ -261,7 +263,7 @@ Get entity-level breakdown within a category.
 
 ### GET `/api/category-insight`
 
-Generate or retrieve cached trend analysis and forecast for a category.
+Generate or retrieve a cached trend + forecast for a category.
 
 **Parameters**
 
@@ -269,6 +271,7 @@ Generate or retrieve cached trend analysis and forecast for a category.
 |---|---|---|---|
 | `category` | string | required | Category name |
 | `subcategory` | string | — | Entity tag for drill-down (e.g., "apt29") |
+| `days` | integer | — | Lookback window in days. Omit for all time. When set, result is not written to the persistent cache. |
 
 **Response**
 
@@ -279,9 +282,91 @@ Generate or retrieve cached trend analysis and forecast for a category.
   "article_count": 42,
   "model_used": "gpt-4o-mini",
   "cached": true,
-  "generated_at": "2024-01-15T12:00:00"
+  "generated_at": "2024-01-15T12:00:00",
+  "actual_cost": 0.0
 }
 ```
+
+`actual_cost` is `0.0` when the result was served from cache.
+
+---
+
+### GET `/api/trend-analysis`
+
+Generate or retrieve cached historical trend analysis (quarterly + yearly) for a category.
+
+**Parameters**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `category` | string | required | Category name |
+| `subcategory` | string | — | Entity tag for drill-down (e.g., "apt29") |
+| `days` | integer | — | Lookback window in days. Omit for all time. When set, result is generated fresh and not cached. |
+
+**Response**
+
+```json
+{
+  "quarterly": [
+    {
+      "period": "2024-Q1",
+      "article_count": 18,
+      "trend_text": "## Q1 2024 Trends\n\n..."
+    },
+    {
+      "period": "2024-Q2",
+      "article_count": 24,
+      "trend_text": "## Q2 2024 Trends\n\n..."
+    }
+  ],
+  "yearly": [
+    {
+      "period": "2024",
+      "article_count": 42,
+      "trend_text": "## 2024 Annual Trends\n\n..."
+    }
+  ],
+  "model_used": "gpt-4o-mini",
+  "actual_cost": 0.012
+}
+```
+
+**Error Responses**
+
+```json
+{"error": "insufficient_data", "article_count": 2}
+```
+
+Returned when fewer than 3 articles are available.
+
+---
+
+### GET `/api/insight-estimate`
+
+Estimate the API cost before generating a trend analysis or forecast. Call this before `/api/trend-analysis` or `/api/category-insight` to show the user a cost confirmation.
+
+**Parameters**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `category` | string | required | Category name |
+| `subcategory` | string | — | Entity tag for drill-down |
+| `days` | integer | — | Lookback window in days |
+| `type` | string | `"forecast"` | `"forecast"` or `"trend"` |
+
+**Response**
+
+```json
+{
+  "article_count": 42,
+  "estimated_cost": 0.008,
+  "model": "gpt-4o-mini",
+  "n_quarters": 4,
+  "n_years": 1
+}
+```
+
+`n_quarters` and `n_years` are only present when `type=trend`. `estimated_cost` is `0.0` when the forecast result is already cached.
 
 ---
 
@@ -396,9 +481,12 @@ Save configuration settings.
 
 ```json
 {
+  "llm_provider": "openai",
   "openai_api_key": "sk-proj-...",
-  "malpedia_api_key": "",
   "openai_model": "gpt-4o-mini",
+  "anthropic_api_key": "",
+  "anthropic_model": "claude-haiku-4-5-20251001",
+  "malpedia_api_key": "",
   "fetch_interval_minutes": 30,
   "feeds": [
     {
@@ -417,7 +505,7 @@ Save configuration settings.
 }
 ```
 
-All email fields are optional. Omitted fields retain their current saved values.
+All Anthropic and email fields are optional. Omitted fields retain their current saved values. Feed URLs must use `http://` or `https://` — entries with other schemes are silently dropped.
 
 **Response**
 
