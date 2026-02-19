@@ -7,23 +7,65 @@
     <h1 class="page-title">Settings</h1>
 
     <section class="settings-section">
-        <h2>OpenAI Configuration</h2>
+        <h2>LLM Provider</h2>
         <div class="form-group">
-            <label for="api-key">API Key</label>
-            <div class="input-with-action">
-                <input type="password" id="api-key" class="form-input" placeholder="sk-..." value="{{ config.openai_api_key or '' }}">
-                <button class="btn btn-secondary btn-sm" onclick="testApiKey()">Test</button>
+            <div class="provider-toggle" id="provider-toggle">
+                <button type="button" class="provider-btn {% if config.llm_provider != 'anthropic' %}active{% endif %}" data-provider="openai" onclick="switchProvider('openai')">OpenAI</button>
+                <button type="button" class="provider-btn {% if config.llm_provider == 'anthropic' %}active{% endif %}" data-provider="anthropic" onclick="switchProvider('anthropic')">Anthropic</button>
             </div>
-            <span class="form-hint" id="api-key-status"></span>
+            <input type="hidden" id="llm-provider" value="{{ config.llm_provider or 'openai' }}">
         </div>
-        <div class="form-group">
-            <label for="model-select">Model</label>
-            <select id="model-select" class="form-input">
-                <option value="gpt-4o-mini" {% if config.openai_model == 'gpt-4o-mini' %}selected{% endif %}>gpt-4o-mini (Recommended)</option>
-                <option value="gpt-4o" {% if config.openai_model == 'gpt-4o' %}selected{% endif %}>gpt-4o</option>
-                <option value="gpt-4-turbo" {% if config.openai_model == 'gpt-4-turbo' %}selected{% endif %}>gpt-4-turbo</option>
-                <option value="gpt-3.5-turbo" {% if config.openai_model == 'gpt-3.5-turbo' %}selected{% endif %}>gpt-3.5-turbo</option>
-            </select>
+
+        <!-- OpenAI section -->
+        <div id="openai-section" {% if config.llm_provider == 'anthropic' %}style="display:none;"{% endif %}>
+            <div class="form-group">
+                <label for="api-key">OpenAI API Key</label>
+                <div class="input-with-action">
+                    <input type="password" id="api-key" class="form-input" placeholder="sk-..." value="{{ config.openai_api_key or '' }}">
+                    <button class="btn btn-secondary btn-sm" onclick="testApiKey()">Test</button>
+                </div>
+                <span class="form-hint" id="api-key-status"></span>
+            </div>
+            <div class="form-group">
+                <label for="model-select">Model</label>
+                <select id="model-select" class="form-input">
+                    <option value="gpt-4o-mini" {% if config.openai_model == 'gpt-4o-mini' %}selected{% endif %}>gpt-4o-mini (Recommended)</option>
+                    <option value="gpt-4o" {% if config.openai_model == 'gpt-4o' %}selected{% endif %}>gpt-4o</option>
+                    <option value="gpt-4-turbo" {% if config.openai_model == 'gpt-4-turbo' %}selected{% endif %}>gpt-4-turbo</option>
+                    <option value="gpt-3.5-turbo" {% if config.openai_model == 'gpt-3.5-turbo' %}selected{% endif %}>gpt-3.5-turbo</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Anthropic section -->
+        <div id="anthropic-section" {% if config.llm_provider != 'anthropic' %}style="display:none;"{% endif %}>
+            <div class="form-group">
+                <label for="anthropic-key">Anthropic API Key</label>
+                <div class="input-with-action">
+                    <input type="password" id="anthropic-key" class="form-input" placeholder="sk-ant-..." value="{{ config.anthropic_api_key or '' }}">
+                    <button class="btn btn-secondary btn-sm" onclick="testAnthropicKey()">Test</button>
+                </div>
+                <span class="form-hint" id="anthropic-key-status"></span>
+            </div>
+            <div class="form-group">
+                <label for="anthropic-model-select">Model</label>
+                <select id="anthropic-model-select" class="form-input">
+                    <option value="claude-3-5-haiku-20241022" {% if config.anthropic_model == 'claude-3-5-haiku-20241022' %}selected{% endif %}>claude-3-5-haiku (Recommended)</option>
+                    <option value="claude-sonnet-4-6" {% if config.anthropic_model == 'claude-sonnet-4-6' %}selected{% endif %}>claude-sonnet-4-6</option>
+                    <option value="claude-opus-4-6" {% if config.anthropic_model == 'claude-opus-4-6' %}selected{% endif %}>claude-opus-4-6</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+                <p class="form-hint">Anthropic is used for all LLM tasks (summarization, analysis, intelligence chat). An OpenAI API key below is still required for article embeddings and semantic search.</p>
+            </div>
+            <div class="form-group">
+                <label for="embed-api-key">OpenAI API Key <span style="font-weight:400;color:var(--text-secondary);">(for embeddings)</span></label>
+                <div class="input-with-action">
+                    <input type="password" id="embed-api-key" class="form-input" placeholder="sk-..." value="{{ config.openai_api_key or '' }}">
+                    <button class="btn btn-secondary btn-sm" onclick="testEmbedApiKey()">Test</button>
+                </div>
+                <span class="form-hint" id="embed-api-key-status"></span>
+            </div>
         </div>
     </section>
 
@@ -149,6 +191,19 @@
         <span class="save-status" id="save-status"></span>
     </div>
 
+    <section class="settings-section">
+        <h2>Feedback</h2>
+        <p class="form-hint" style="margin-bottom:14px;">Found a bug or have an idea? Open an issue or pull request on GitHub.</p>
+        <a href="https://github.com/nikhilh-20/ThreatLoom/issues" target="_blank" rel="noopener" class="btn btn-secondary">Open an Issue or PR on GitHub</a>
+    </section>
+
+    <section class="settings-section">
+        <h2>About</h2>
+        <p style="font-size:1rem;font-weight:600;color:var(--text-primary);margin:0 0 4px;">Threat Loom</p>
+        <p class="form-hint" style="margin-bottom:14px;">AI-powered threat news analysis platform</p>
+        <a href="https://github.com/nikhilh-20/ThreatLoom" target="_blank" rel="noopener" class="btn btn-secondary">View Source Code on GitHub</a>
+    </section>
+
     <section class="settings-section settings-section-danger">
         <h2>Danger Zone</h2>
         <p class="form-hint">Clear all articles, summaries, and correlations. Sources and settings are preserved. Use the days input above to control how far back the next refresh will look.</p>
@@ -165,5 +220,6 @@
     document.addEventListener('DOMContentLoaded', () => {
         loadStats();
     });
+
 </script>
 {% endblock %}

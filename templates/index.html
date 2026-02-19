@@ -3,6 +3,13 @@
 {% block content %}
 <!-- Category overview (default view) -->
 <div id="categories-view">
+    <div class="time-filter-bar" id="time-filter-bar">
+        <button class="time-filter-pill active" onclick="setTimeFilter(0)">All</button>
+        <button class="time-filter-pill" onclick="setTimeFilter(1)">24h</button>
+        <button class="time-filter-pill" onclick="setTimeFilter(7)">7d</button>
+        <button class="time-filter-pill" onclick="setTimeFilter(30)">30d</button>
+        <button class="time-filter-pill" onclick="setTimeFilter(90)">90d</button>
+    </div>
     <div class="categories-grid" id="categories-grid"></div>
     <div class="loading-skeleton" id="categories-skeleton" style="display:none;">
         <div class="skeleton-card"></div>
@@ -21,10 +28,34 @@
         <h2 class="drilldown-title" id="drilldown-title"></h2>
         <span class="drilldown-breadcrumb" id="drilldown-breadcrumb" style="display:none;"></span>
         <span class="category-count" id="drilldown-count"></span>
-        <button class="btn btn-secondary btn-sm" id="insight-btn" onclick="loadCategoryInsight()" style="margin-left:auto">
-            <span class="btn-icon">&#128200;</span> Trend &amp; Forecast
-        </button>
+        <div class="insight-buttons" style="margin-left:auto;display:flex;gap:6px;">
+            <button class="btn btn-secondary btn-sm" id="insight-trend-btn" onclick="loadTrendAnalysis()">
+                <span class="btn-icon">&#128200;</span> Trend Analysis
+            </button>
+            <button class="btn btn-secondary btn-sm" id="insight-forecast-btn" onclick="loadCategoryInsight()">
+                <span class="btn-icon">&#128202;</span> Forecast
+            </button>
+        </div>
     </div>
+    <!-- Historical Trend Analysis Panel (quarterly + yearly) -->
+    <div id="trend-analysis-panel" class="insight-panel" style="display:none;">
+        <div id="trend-loading" class="insight-loading" style="display:none;">
+            <p class="insight-loading-text">Generating trend analysis...</p>
+        </div>
+        <div id="trend-content" style="display:none;">
+            <div id="quarterly-section">
+                <h3 class="insight-heading">Quarter-by-Quarter Analysis</h3>
+                <div id="quarterly-list"></div>
+            </div>
+            <div id="yearly-section" style="margin-top:16px;">
+                <h3 class="insight-heading">Year-by-Year Analysis</h3>
+                <div id="yearly-list"></div>
+            </div>
+            <p class="insight-meta" id="trend-meta"></p>
+        </div>
+        <div id="trend-error" class="insight-error" style="display:none;"></div>
+    </div>
+    <!-- Forecast Panel (flat trend + forecast) -->
     <div id="insight-panel" class="insight-panel" style="display:none;">
         <div id="insight-loading" class="insight-loading" style="display:none;">
             <div class="skeleton-card" style="height:60px;margin-bottom:8px;"></div>
@@ -32,7 +63,7 @@
         </div>
         <div id="insight-content" style="display:none;">
             <div class="insight-section">
-                <h3 class="insight-heading">Trend Analysis</h3>
+                <h3 class="insight-heading">Current Trends</h3>
                 <div class="markdown-body" id="insight-trend"></div>
             </div>
             <div class="insight-section">
@@ -81,6 +112,7 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        showDisclaimerIfNeeded();
         loadSources();
         loadCategories();
         loadStats();

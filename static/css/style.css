@@ -83,9 +83,18 @@ a:hover {
     gap: 10px;
 }
 
-.brand-icon {
-    font-size: 1.5rem;
-    color: var(--accent-cyan);
+.brand-logo {
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .sidebar-brand h1 {
@@ -93,6 +102,14 @@ a:hover {
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+    margin: 0;
+}
+
+.brand-tagline {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.3;
 }
 
 .sidebar-nav {
@@ -132,6 +149,7 @@ a:hover {
     padding: 16px;
     border-top: 1px solid var(--border-color);
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
@@ -316,6 +334,102 @@ a:hover {
     to { transform: rotate(360deg); }
 }
 
+/* === Trend Period Collapsible Items === */
+.trend-period-item {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.trend-period-summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-tertiary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+    user-select: none;
+}
+
+.trend-period-summary::-webkit-details-marker {
+    display: none;
+}
+
+.trend-period-summary::before {
+    content: "\25B6";
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+details[open] > .trend-period-summary::before {
+    transform: rotate(90deg);
+}
+
+.trend-period-summary:hover {
+    background: var(--bg-hover);
+}
+
+.trend-period-body {
+    padding: 14px;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.87rem;
+}
+
+/* === Modal Overlay === */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-dialog {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    min-width: 340px;
+    max-width: 440px;
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+}
+
+.modal-body {
+    font-size: 0.93rem;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    margin-bottom: 20px;
+}
+
+.modal-body strong {
+    color: var(--accent-cyan);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
 /* === Content Area === */
 .content-area {
     padding: 24px;
@@ -342,6 +456,38 @@ a:hover {
     font-size: 0.87rem;
     outline: none;
     cursor: pointer;
+}
+
+.time-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.time-filter-pill {
+    padding: 5px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+}
+
+.time-filter-pill:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--accent-blue);
+}
+
+.time-filter-pill.active {
+    background: var(--accent-blue);
+    color: #fff;
+    border-color: var(--accent-blue);
 }
 
 .tag-chips {
@@ -843,6 +989,36 @@ a:hover {
     border-radius: var(--radius-lg);
     padding: 24px;
     margin-bottom: 20px;
+}
+
+/* Provider toggle (OpenAI / Anthropic) */
+.provider-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+.provider-btn {
+    padding: 6px 20px;
+    font-size: 0.87rem;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+}
+.provider-btn:not(:last-child) {
+    border-right: 1px solid var(--border-color);
+}
+.provider-btn.active {
+    background: var(--accent-purple);
+    color: #fff;
+}
+.provider-btn:not(.active):hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 .settings-section h2 {

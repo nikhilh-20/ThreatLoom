@@ -8,6 +8,7 @@ import threading
 from flask import Flask, jsonify, render_template, request
 
 from config import load_config, save_config
+from cost_tracker import cost_tracker, _lookup_pricing
 from database import (
     _compute_category_hash,
     clear_database,
@@ -20,11 +21,22 @@ from database import (
     get_sources,
     get_stats,
     get_subcategories,
+    get_trend_analyses,
     init_db,
     save_category_insight,
     upsert_source,
 )
-from scheduler import is_refreshing, start_scheduler, trigger_manual_refresh
+from scheduler import (
+    approve_cost,
+    decline_cost,
+    dismiss_actual_cost,
+    get_actual_cost,
+    get_cost_estimate,
+    get_pipeline_stage,
+    is_refreshing,
+    start_scheduler,
+    trigger_manual_refresh,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -136,12 +148,15 @@ def api_articles_categorized():
 
     Query params:
         limit: Max articles per category (default 10).
+        days: Only include articles from the last N days (0 = all).
 
     Returns:
         JSON array of category objects with nested article arrays.
     """
     limit = request.args.get("limit", 10, type=int)
-    categories = get_categorized_articles(limit_per_category=limit)
+    days = request.args.get("days", 0, type=int)
+    since_days = days if days > 0 else None
+    categories = get_categorized_articles(limit_per_category=limit, since_days=since_days)
     return jsonify(categories)
 
 
@@ -202,12 +217,38 @@ def api_clear_db():
 
 @app.route("/api/refresh-status")
 def api_refresh_status():
-    """Check whether a pipeline refresh is currently running.
+    """Check pipeline refresh status including cost confirmation state.
 
     Returns:
-        JSON with ``is_refreshing`` boolean.
+        JSON with ``is_refreshing``, ``stage``, ``cost_estimate``, ``actual_cost``.
     """
-    return jsonify({"is_refreshing": is_refreshing()})
+    return jsonify({
+        "is_refreshing": is_refreshing(),
+        "stage": get_pipeline_stage(),
+        "cost_estimate": get_cost_estimate(),
+        "actual_cost": get_actual_cost(),
+    })
+
+
+@app.route("/api/cost/approve", methods=["POST"])
+def api_cost_approve():
+    """Approve the pending cost estimate to proceed with summarization."""
+    approve_cost()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/cost/decline", methods=["POST"])
+def api_cost_decline():
+    """Decline the pending cost estimate to skip summarization."""
+    decline_cost()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/cost/dismiss", methods=["POST"])
+def api_cost_dismiss():
+    """Dismiss the actual cost dialog after summarization."""
+    dismiss_actual_cost()
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/settings", methods=["POST"])
@@ -225,16 +266,27 @@ def api_settings():
         data = request.get_json()
         config = load_config()
 
+        if "llm_provider" in data:
+            config["llm_provider"] = data["llm_provider"]
         if "openai_api_key" in data:
             config["openai_api_key"] = data["openai_api_key"]
-        if "malpedia_api_key" in data:
-            config["malpedia_api_key"] = data["malpedia_api_key"]
         if "openai_model" in data:
             config["openai_model"] = data["openai_model"]
+        if "anthropic_api_key" in data:
+            config["anthropic_api_key"] = data["anthropic_api_key"]
+        if "anthropic_model" in data:
+            config["anthropic_model"] = data["anthropic_model"]
+        if "malpedia_api_key" in data:
+            config["malpedia_api_key"] = data["malpedia_api_key"]
         if "fetch_interval_minutes" in data:
             config["fetch_interval_minutes"] = int(data["fetch_interval_minutes"])
         if "feeds" in data:
-            config["feeds"] = data["feeds"]
+            safe_feeds = [
+                f for f in data["feeds"]
+                if isinstance(f.get("url"), str)
+                and (f["url"].startswith("http://") or f["url"].startswith("https://"))
+            ]
+            config["feeds"] = safe_feeds
 
         # Email notification settings
         for key in ("smtp_host", "smtp_username", "smtp_password", "notification_email"):
@@ -278,6 +330,35 @@ def api_test_key():
 
         client = OpenAI(api_key=api_key)
         client.models.list()
+        return jsonify({"valid": True})
+    except Exception as e:
+        return jsonify({"valid": False, "error": str(e)})
+
+
+@app.route("/api/test-anthropic-key", methods=["POST"])
+def api_test_anthropic_key():
+    """Validate an Anthropic API key by sending a minimal message.
+
+    Request body (JSON):
+        api_key: The Anthropic API key to test.
+
+    Returns:
+        JSON with ``valid`` boolean and optional ``error`` string.
+    """
+    data = request.get_json()
+    api_key = data.get("api_key", "").strip()
+    if not api_key:
+        return jsonify({"valid": False, "error": "No API key provided"})
+
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=api_key)
+        client.messages.create(
+            model="claude-3-5-haiku-20241022",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hi"}],
+        )
         return jsonify({"valid": True})
     except Exception as e:
         return jsonify({"valid": False, "error": str(e)})
@@ -345,6 +426,7 @@ def api_subcategories():
     Query params:
         category: The broad category name (required).
         limit: Max articles per sub-category (default 50).
+        days: Only include articles from the last N days (0 = all).
 
     Returns:
         JSON array of sub-category objects.
@@ -353,8 +435,102 @@ def api_subcategories():
     if not category:
         return jsonify([])
     limit = request.args.get("limit", 50, type=int)
-    subs = get_subcategories(category, limit_per_sub=limit)
+    days = request.args.get("days", 0, type=int)
+    since_days = days if days > 0 else None
+    subs = get_subcategories(category, limit_per_sub=limit, since_days=since_days)
     return jsonify(subs)
+
+
+@app.route("/api/insight-estimate")
+def api_insight_estimate():
+    """Return a cost estimate before running a Trend Analysis or Forecast.
+
+    Query params:
+        category: The broad category name (required).
+        subcategory: Optional entity tag for narrower focus.
+        days: Only include articles from the last N days (0 = all).
+        type: ``"trend"`` or ``"forecast"`` (default ``"forecast"``).
+
+    Returns:
+        JSON with ``article_count``, ``estimated_cost``, ``model``,
+        and for trend: ``n_quarters``, ``n_years``.
+    """
+    from llm_client import get_model_name, has_api_key
+    from summarizer import estimate_insight_cost, estimate_trend_cost
+
+    category = request.args.get("category", "").strip()
+    if not category:
+        return jsonify({"error": "missing category parameter"}), 400
+
+    subcategory = request.args.get("subcategory", "").strip() or None
+    days = request.args.get("days", 0, type=int)
+    since_days = days if days > 0 else None
+    insight_type = request.args.get("type", "forecast")
+
+    if not has_api_key():
+        return jsonify({"error": "api_key_missing"})
+
+    articles = get_articles_for_category(category, subcategory_tag=subcategory, since_days=since_days)
+    if len(articles) < 3:
+        return jsonify({"error": "insufficient_data", "article_count": len(articles)})
+
+    model = get_model_name()
+
+    if insight_type == "trend":
+        estimated_cost, n_quarters, n_years = estimate_trend_cost(articles, model)
+        return jsonify({
+            "article_count": len(articles),
+            "estimated_cost": estimated_cost,
+            "model": model,
+            "n_quarters": n_quarters,
+            "n_years": n_years,
+        })
+    else:
+        estimated_cost = estimate_insight_cost(len(articles), model)
+        return jsonify({
+            "article_count": len(articles),
+            "estimated_cost": estimated_cost,
+            "model": model,
+        })
+
+
+@app.route("/api/trend-analysis")
+def api_trend_analysis():
+    """Generate or return cached quarterly and yearly trend analyses for a category.
+
+    Query params:
+        category: The broad category name (required).
+        subcategory: Optional entity tag for narrower focus.
+
+    Returns:
+        JSON with ``quarterly`` list, ``yearly`` list, ``model_used``,
+        or an error object.
+    """
+    from summarizer import generate_trend_analysis
+
+    category = request.args.get("category", "").strip()
+    if not category:
+        return jsonify({"error": "missing category parameter"}), 400
+
+    subcategory = request.args.get("subcategory", "").strip() or None
+    days = request.args.get("days", 0, type=int)
+    since_days = days if days > 0 else None
+
+    articles = get_articles_for_category(category, subcategory_tag=subcategory, since_days=since_days)
+    if len(articles) < 3:
+        return jsonify({"error": "insufficient_data", "article_count": len(articles)})
+
+    pre_it, pre_ot = cost_tracker.get_tokens()
+    result = generate_trend_analysis(category, subcategory_tag=subcategory, since_days=since_days)
+    if result is None:
+        return jsonify({"error": "generation_failed"}), 500
+
+    post_it, post_ot = cost_tracker.get_tokens()
+    inp_price, out_price = _lookup_pricing(result["model_used"])
+    actual_cost = ((post_it - pre_it) * inp_price + (post_ot - pre_ot) * out_price) / 1_000_000
+    result["actual_cost"] = actual_cost
+
+    return jsonify(result)
 
 
 @app.route("/api/category-insight")
@@ -381,12 +557,17 @@ def api_category_insight():
         return jsonify({"error": "missing category parameter"}), 400
 
     subcategory = request.args.get("subcategory", "").strip() or None
+    days = request.args.get("days", 0, type=int)
+    since_days = days if days > 0 else None
 
-    # Build cache key: "Category" or "Category::subtag"
+    # Build cache key: include time-filter suffix so filtered results don't
+    # overwrite the all-time cache entry.
     cache_key = f"{category}::{subcategory}" if subcategory else category
+    if since_days:
+        cache_key = f"{cache_key}::days{since_days}"
 
     # Get articles for this category/subcategory and check minimum count
-    articles = get_articles_for_category(category, subcategory_tag=subcategory)
+    articles = get_articles_for_category(category, subcategory_tag=subcategory, since_days=since_days)
     if len(articles) < 3:
         return jsonify({"error": "insufficient_data", "article_count": len(articles)})
 
@@ -410,13 +591,19 @@ def api_category_insight():
                 "article_count": cached["article_count"],
                 "model_used": cached["model_used"],
                 "cached": True,
+                "actual_cost": 0.0,
                 "generated_at": cached["created_date"],
             })
 
-    # Generate fresh insight
-    result = generate_category_insight(category, subcategory_tag=subcategory)
+    # Generate fresh insight, snapshot tokens to compute actual cost
+    pre_it, pre_ot = cost_tracker.get_tokens()
+    result = generate_category_insight(category, subcategory_tag=subcategory, since_days=since_days)
     if result is None:
         return jsonify({"error": "generation_failed"}), 500
+
+    post_it, post_ot = cost_tracker.get_tokens()
+    inp_price, out_price = _lookup_pricing(result["model_used"])
+    actual_cost = ((post_it - pre_it) * inp_price + (post_ot - pre_ot) * out_price) / 1_000_000
 
     # Save to cache
     save_category_insight(
@@ -434,6 +621,7 @@ def api_category_insight():
         "article_count": result["article_count"],
         "model_used": result["model_used"],
         "cached": False,
+        "actual_cost": actual_cost,
         "generated_at": datetime.utcnow().isoformat(),
     })
 

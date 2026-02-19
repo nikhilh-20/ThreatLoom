@@ -27,9 +27,12 @@ def get_default_config():
         30-minute fetch interval, and 13 pre-configured RSS feeds.
     """
     return {
+        "llm_provider": "openai",
         "openai_api_key": "",
-        "malpedia_api_key": "",
         "openai_model": "gpt-4o-mini",
+        "anthropic_api_key": "",
+        "anthropic_model": "claude-3-5-haiku-20241022",
+        "malpedia_api_key": "",
         "fetch_interval_minutes": 30,
         "feeds": [
             {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "enabled": True},
@@ -73,6 +76,12 @@ def load_config():
     env_openai = os.environ.get("OPENAI_API_KEY")
     if env_openai:
         config["openai_api_key"] = env_openai
+    env_anthropic = os.environ.get("ANTHROPIC_API_KEY")
+    if env_anthropic:
+        config["anthropic_api_key"] = env_anthropic
+    env_provider = os.environ.get("LLM_PROVIDER")
+    if env_provider:
+        config["llm_provider"] = env_provider
     env_malpedia = os.environ.get("MALPEDIA_API_KEY")
     if env_malpedia:
         config["malpedia_api_key"] = env_malpedia

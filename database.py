@@ -95,6 +95,19 @@ def init_db():
             created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS trend_analyses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_name TEXT NOT NULL,
+            period_type TEXT NOT NULL,
+            period_label TEXT NOT NULL,
+            trend_text TEXT,
+            article_count INTEGER,
+            article_hash TEXT,
+            model_used TEXT,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(category_name, period_type, period_label)
+        );
+
         CREATE TABLE IF NOT EXISTS article_embeddings (
             article_id INTEGER PRIMARY KEY,
             embedding BLOB NOT NULL,
@@ -391,12 +404,33 @@ def get_sources():
     return [dict(r) for r in rows]
 
 
+def get_unsummarized_count():
+    """Count articles with scraped content but no summary."""
+    conn = get_connection()
+    return conn.execute(
+        """
+        SELECT COUNT(*) as c FROM articles a
+        LEFT JOIN summaries sm ON sm.article_id = a.id
+        WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+        """
+    ).fetchone()["c"]
+
+
+def get_scrape_failed_count():
+    """Count articles where scraping was attempted but returned empty content."""
+    conn = get_connection()
+    return conn.execute(
+        "SELECT COUNT(*) as c FROM articles WHERE content_raw = ''"
+    ).fetchone()["c"]
+
+
 def get_stats():
     """Compute aggregate statistics for the dashboard.
 
     Returns:
         A dict with keys ``total_articles``, ``total_sources``,
-        ``total_summaries``, and ``articles_last_24h``.
+        ``total_summaries``, ``articles_last_24h``, ``unsummarized``,
+        and ``scrape_failed``.
     """
     conn = get_connection()
     total_articles = conn.execute("SELECT COUNT(*) as c FROM articles").fetchone()["c"]
@@ -405,11 +439,15 @@ def get_stats():
     recent = conn.execute(
         "SELECT COUNT(*) as c FROM articles WHERE fetched_date >= datetime('now', '-24 hours')"
     ).fetchone()["c"]
+    unsummarized = get_unsummarized_count()
+    scrape_failed = get_scrape_failed_count()
     return {
         "total_articles": total_articles,
         "total_sources": total_sources,
         "total_summaries": total_summaries,
         "articles_last_24h": recent,
+        "unsummarized": unsummarized,
+        "scrape_failed": scrape_failed,
     }
 
 
@@ -778,7 +816,7 @@ def _format_entity_name(tag):
     return tag.replace("-", " ").title()
 
 
-def get_subcategories(category_name, limit_per_sub=50):
+def get_subcategories(category_name, limit_per_sub=50, since_days=None):
     """Return sub-categories for a broad category based on named entities.
 
     Only works for categories listed in ``_KNOWN_ENTITIES`` (currently
@@ -790,6 +828,8 @@ def get_subcategories(category_name, limit_per_sub=50):
     Args:
         category_name: Broad category name (e.g. ``"Malware"``).
         limit_per_sub: Maximum articles to include per sub-category.
+        since_days: If provided, only include articles published within
+            this many days.
 
     Returns:
         List of sub-category dicts with keys ``tag``, ``display_name``,
@@ -799,7 +839,7 @@ def get_subcategories(category_name, limit_per_sub=50):
     if category_name not in _KNOWN_ENTITIES:
         return []
 
-    articles = get_articles_for_category(category_name)
+    articles = get_articles_for_category(category_name, since_days=since_days)
 
     # tag -> {article_id: article_dict}
     sub_map = {}
@@ -848,7 +888,7 @@ def get_subcategories(category_name, limit_per_sub=50):
     return result
 
 
-def get_categorized_articles(limit_per_category=10):
+def get_categorized_articles(limit_per_category=10, since_days=None):
     """Return articles grouped into broad threat categories.
 
     Tags are consolidated into a small set of meaningful categories
@@ -857,24 +897,32 @@ def get_categorized_articles(limit_per_category=10):
 
     Args:
         limit_per_category: Maximum articles to include per category.
+        since_days: If provided, only include articles published within
+            this many days.
 
     Returns:
         List of category dicts sorted by count descending, each with
         keys ``name``, ``count``, and ``articles``.
     """
     conn = get_connection()
+    params = []
+    date_filter = ""
+    if since_days:
+        date_filter = f" AND date(a.published_date) >= date('now', ?)"
+        params.append(f"-{since_days} days")
     rows = conn.execute(
-        """
+        f"""
         SELECT a.id, a.title, a.url, a.author, a.published_date, a.fetched_date,
                a.image_url, s.name as source_name,
                sm.summary_text, sm.key_points, sm.tags, sm.novelty_notes
         FROM articles a
         JOIN sources s ON a.source_id = s.id
         LEFT JOIN summaries sm ON sm.article_id = a.id
-        WHERE sm.tags IS NOT NULL AND sm.tags != '[]'
+        WHERE sm.tags IS NOT NULL AND sm.tags != '[]'{date_filter}
         ORDER BY a.published_date DESC NULLS LAST, a.fetched_date DESC
         LIMIT 500
         """,
+        params,
     ).fetchall()
 
     # Build category -> articles map (deduplicate by article id)
@@ -932,7 +980,7 @@ def _compute_category_hash(articles):
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def get_articles_for_category(category_name, subcategory_tag=None):
+def get_articles_for_category(category_name, subcategory_tag=None, since_days=None):
     """Return all summarized articles belonging to a broad category.
 
     Scans all articles with tags and filters to those whose tags map
@@ -942,22 +990,30 @@ def get_articles_for_category(category_name, subcategory_tag=None):
         category_name: Broad category name (e.g. ``"Malware"``).
         subcategory_tag: If provided, further filters to articles
             whose tags contain a match for this specific entity.
+        since_days: If provided, only include articles published within
+            this many days.
 
     Returns:
         List of article dicts with summary data, ordered by
         publication date descending.
     """
     conn = get_connection()
+    params = []
+    date_filter = ""
+    if since_days:
+        date_filter = f" AND date(a.published_date) >= date('now', ?)"
+        params.append(f"-{since_days} days")
     rows = conn.execute(
-        """
+        f"""
         SELECT a.id, a.title, a.url, a.published_date,
                sm.summary_text, sm.tags
         FROM articles a
         JOIN summaries sm ON sm.article_id = a.id
-        WHERE sm.tags IS NOT NULL AND sm.tags != '[]'
+        WHERE sm.tags IS NOT NULL AND sm.tags != '[]'{date_filter}
         ORDER BY a.published_date DESC NULLS LAST, a.fetched_date DESC
         LIMIT 500
         """,
+        params,
     ).fetchall()
 
     articles = []
@@ -1107,10 +1163,75 @@ def clear_database():
     conn = get_connection()
     conn.executescript("""
         DELETE FROM article_embeddings;
+        DELETE FROM trend_analyses;
         DELETE FROM category_insights;
         DELETE FROM article_correlations;
         DELETE FROM summaries;
         DELETE FROM articles;
         UPDATE sources SET last_fetched = NULL;
     """)
+    conn.commit()
+
+
+def get_trend_analyses(category_name):
+    """Return all trend analysis rows for a category, ordered by period.
+
+    Args:
+        category_name: Category name (e.g. ``"Malware"``).
+
+    Returns:
+        List of row dicts ordered by ``period_type, period_label``.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM trend_analyses WHERE category_name = ? ORDER BY period_type, period_label",
+        (category_name,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_trend_analysis(category_name, period_type, period_label):
+    """Return a single trend analysis row, or None if not cached.
+
+    Args:
+        category_name: Category name.
+        period_type: ``"quarterly"`` or ``"yearly"``.
+        period_label: Period string (e.g. ``"2024-Q1"`` or ``"2024"``).
+
+    Returns:
+        Row dict or None.
+    """
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM trend_analyses WHERE category_name = ? AND period_type = ? AND period_label = ?",
+        (category_name, period_type, period_label),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def save_trend_analysis(category_name, period_type, period_label, trend_text, article_count, article_hash, model_used):
+    """Upsert a trend analysis row.
+
+    Args:
+        category_name: Category name.
+        period_type: ``"quarterly"`` or ``"yearly"``.
+        period_label: Period string.
+        trend_text: Markdown trend text.
+        article_count: Number of articles used.
+        article_hash: Content hash for cache invalidation.
+        model_used: Model name string.
+    """
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO trend_analyses
+               (category_name, period_type, period_label, trend_text, article_count, article_hash, model_used, created_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(category_name, period_type, period_label) DO UPDATE SET
+               trend_text = excluded.trend_text,
+               article_count = excluded.article_count,
+               article_hash = excluded.article_hash,
+               model_used = excluded.model_used,
+               created_date = CURRENT_TIMESTAMP""",
+        (category_name, period_type, period_label, trend_text, article_count, article_hash, model_used),
+    )
     conn.commit()
