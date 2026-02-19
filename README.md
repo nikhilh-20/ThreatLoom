@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/img/icon.jpg" alt="Threat Loom" width="80">
+</p>
+
 # Threat Loom
 
 AI-powered threat news analysis platform — aggregation, summarization, and forecasting.
@@ -11,18 +15,19 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 ## Features
 
 - **Feed Aggregation** — Ingests from 13 pre-configured security feeds (The Hacker News, BleepingComputer, Krebs on Security, CISA, etc.) plus Malpedia research. LLM-based relevance filtering removes noise.
-- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK.
+- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK. Supports OpenAI and Anthropic providers.
 - **Attack Flow Visualization** — Interactive kill chain timeline showing phase-by-phase attack sequences with MITRE tactic/technique mapping and progressive reveal.
 - **Semantic Search** — RAG-powered chat interface. Ask questions in natural language and get answers grounded in your article database with citation cards.
-- **Trend Forecasting** — Category-level trend analysis with 3-6 month outlooks. Drill into specific threat actors, malware families, and offensive tooling.
+- **Historical Trend Analysis** — Multi-pass LLM analysis generating quarter-by-quarter and year-by-year reports for each threat category, with cross-period correlation. Results are cached and displayed in collapsible panels.
+- **Trend Forecasting** — Category-level trend + 3-6 month forecast. Drill into specific threat actors, malware families, and offensive tooling. Cost estimate shown before generation; actual cost shown after.
+- **Time-Period Filter** — Filter the entire feed view and all category analysis by 24 h, 7 d, 30 d, or 90 d lookback with one click.
 - **Email Notifications** — Per-article email alerts with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original source. Configure any SMTP provider (Gmail, Outlook, SendGrid). Uses only Python stdlib — no extra dependencies.
-
 - **Automatic Categorization** — Articles are sorted into 9 threat categories (Malware, Vulnerabilities, Threat Actors, Phishing, Supply Chain, etc.) with entity-level subcategories for 300+ MITRE ATT&CK groups and software families.
 
 ## Requirements
 
 - Python 3.10+
-- OpenAI API key (for summarization, embeddings, and intelligence search)
+- OpenAI API key (for summarization, embeddings, and intelligence search) **or** Anthropic API key (for summarization only; embeddings still require OpenAI)
 - Malpedia API key (optional, for research article ingestion)
 
 ## Quick Start
@@ -81,6 +86,9 @@ On first run, a `data/config.json` file is created with defaults. You can edit i
 {
   "openai_api_key": "",
   "openai_model": "gpt-4o-mini",
+  "anthropic_api_key": "",
+  "anthropic_model": "claude-haiku-4-5-20251001",
+  "llm_provider": "openai",
   "fetch_interval_minutes": 30,
   "malpedia_api_key": "",
   "feeds": [
@@ -98,6 +106,7 @@ API keys and server settings can be configured via environment variables, which 
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (overrides `config.json`; used when `llm_provider` is `anthropic`) |
 | `MALPEDIA_API_KEY` | — | Optional Malpedia API key (overrides `config.json`) |
 | `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | auto-detect | Listen port (`5000` in Docker) |
@@ -111,9 +120,12 @@ API keys and server settings can be configured via environment variables, which 
 ### Setting up your API key
 
 1. Open the app and navigate to **Settings**
-2. Enter your OpenAI API key and click **Test** to verify
-3. Select your preferred model (`gpt-4o-mini` is recommended for daily use, `gpt-4o` for higher quality)
-4. Click **Save Settings**
+2. Select your LLM provider (**OpenAI** or **Anthropic**)
+3. Enter your API key and click **Test** to verify
+4. Select your preferred model (see tables below)
+5. Click **Save Settings**
+
+> Embeddings for semantic search always use OpenAI (`text-embedding-3-small`). An OpenAI key is required even when using Anthropic for summarization.
 
 ### Adding feeds
 
@@ -141,7 +153,9 @@ Add custom RSS/Atom feeds through the Settings page or directly in `config.json`
 | The Record | Yes |
 | Schneier on Security | Yes |
 
-### OpenAI models
+### LLM models
+
+**OpenAI**
 
 | Model | Best for |
 |---|---|
@@ -150,7 +164,15 @@ Add custom RSS/Atom feeds through the Settings page or directly in `config.json`
 | `gpt-4-turbo` | Complex analysis tasks |
 | `gpt-3.5-turbo` | Budget-conscious processing |
 
-Embeddings always use `text-embedding-3-small` (1536 dimensions).
+**Anthropic**
+
+| Model | Best for |
+|---|---|
+| `claude-haiku-4-5-20251001` | Daily use — fast, cost-effective (default) |
+| `claude-sonnet-4-6` | Higher quality summaries and insights |
+| `claude-opus-4-6` | Highest quality, complex analysis |
+
+Embeddings always use `text-embedding-3-small` (1536 dimensions) regardless of provider.
 
 ## How It Works
 
@@ -193,7 +215,9 @@ scheduler.py          # Background pipeline orchestration (APScheduler)
 feed_fetcher.py       # RSS/Atom feed ingestion with relevance filtering
 malpedia_fetcher.py   # Malpedia BibTeX research ingestion
 article_scraper.py    # HTML download and text extraction (trafilatura)
-summarizer.py         # LLM summarization, relevance checks, trend insights
+summarizer.py         # LLM summarization, relevance checks, trend/forecast insights
+llm_client.py         # LLM provider abstraction (OpenAI and Anthropic)
+cost_tracker.py       # Per-session token and cost tracking
 notifier.py           # Email notifications via SMTP (stdlib only)
 embeddings.py         # Vector embedding generation and cosine similarity search
 intelligence.py       # RAG chat system (retrieval + LLM response)
@@ -205,7 +229,7 @@ docker-compose.yml    # Docker Compose service config
 config.json           # User configuration (created on first run)
 threatlandscape.db    # SQLite database (created on first run)
 templates/            # Jinja2 HTML templates (dashboard, article, intelligence, settings)
-static/               # CSS (dark theme) and JavaScript (client-side logic)
+static/               # CSS (dark theme), JavaScript (client-side logic), and images
 docs/                 # MkDocs documentation source
 mkdocs.yml            # MkDocs configuration
 ```
@@ -220,7 +244,7 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 |---|---|---|
 | GET | `/api/articles` | Paginated article list (params: `source_id`, `search`, `tag`, `page`, `limit`) |
 | GET | `/api/articles/<id>` | Single article with full summary |
-| GET | `/api/articles/categorized` | Articles grouped by threat category |
+| GET | `/api/articles/categorized` | Articles grouped by threat category (params: `days`) |
 
 ### Sources & Stats
 
@@ -241,8 +265,10 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/subcategories` | Entity breakdown within a category (params: `category`, `limit`) |
-| GET | `/api/category-insight` | Trend analysis and forecast (params: `category`, `subcategory`) |
+| GET | `/api/subcategories` | Entity breakdown within a category (params: `category`, `limit`, `days`) |
+| GET | `/api/category-insight` | Trend + 3-6 month forecast (params: `category`, `subcategory`, `days`) |
+| GET | `/api/trend-analysis` | Historical quarterly + yearly trend analysis (params: `category`, `subcategory`, `days`) |
+| GET | `/api/insight-estimate` | Cost estimate before generating insight or trend (params: `category`, `subcategory`, `days`, `type`) |
 
 ### Intelligence
 
@@ -263,13 +289,14 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 
 ## Database
 
-SQLite with WAL mode. Six tables:
+SQLite with WAL mode. Seven tables:
 
 - **sources** — Feed definitions and last-fetched timestamps
 - **articles** — Ingested articles (title, URL, author, date, scraped content, image)
 - **summaries** — AI summaries, tags (JSON), attack flow (JSON), model used
 - **article_embeddings** — 1536-dim float32 vectors stored as BLOBs
 - **category_insights** — Cached trend/forecast text with hash-based invalidation (24h TTL)
+- **trend_analyses** — Cached quarterly and yearly historical trend reports with hash-based invalidation
 - **article_correlations** — Relationships between related articles
 
 Article deduplication is enforced by a UNIQUE constraint on URL. Thread-local connections ensure safe concurrent access from Flask, the scheduler, and the scraper thread pool.
@@ -298,7 +325,7 @@ mkdocs gh-deploy
 | Web framework | Flask |
 | Feed parsing | feedparser |
 | Content extraction | trafilatura |
-| AI / LLM | OpenAI (GPT-4o-mini/4o, text-embedding-3-small) |
+| AI / LLM | OpenAI (GPT-4o-mini/4o, text-embedding-3-small), Anthropic (Claude Haiku/Sonnet/Opus) |
 | Scheduling | APScheduler |
 | Database | SQLite (WAL mode) |
 | Vector search | numpy (cosine similarity) |
@@ -308,6 +335,8 @@ mkdocs gh-deploy
 ## Disclaimer
 
 This tool was fully generated by [Claude Code](https://claude.ai/claude-code) (Anthropic). It is provided strictly for **educational and informational purposes**. Any use of this tool for malicious purposes is expressly prohibited and may violate applicable laws. The author is not responsible for any misuse of this tool. The author provides this tool **"AS-IS" without warranty of any kind**, express or implied, and shall not be liable for any damages or consequences resulting from its use.
+
+The Threat Loom logo was created by [Nano Banana](https://gemini.google/overview/image-generation/) using Gemini image generation.
 
 ## License
 
