@@ -31,7 +31,7 @@ def get_default_config():
         "openai_api_key": "",
         "openai_model": "gpt-4o-mini",
         "anthropic_api_key": "",
-        "anthropic_model": "claude-3-5-haiku-20241022",
+        "anthropic_model": "claude-haiku-4-5-20251001",
         "malpedia_api_key": "",
         "fetch_interval_minutes": 30,
         "feeds": [

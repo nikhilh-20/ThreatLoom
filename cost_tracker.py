@@ -8,7 +8,7 @@ _PRICING = {
     "gpt-4o": (2.50, 10.00),
     "gpt-4-turbo": (10.00, 30.00),
     "gpt-3.5-turbo": (0.50, 1.50),
-    "claude-3-5-haiku": (0.80, 4.00),
+    "claude-haiku": (0.80, 4.00),
     "claude-sonnet": (3.00, 15.00),
     "claude-opus": (15.00, 75.00),
 }

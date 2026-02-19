@@ -21,7 +21,7 @@ def get_model_name():
     config = load_config()
     provider = config.get("llm_provider", "openai")
     if provider == "anthropic":
-        return config.get("anthropic_model", "claude-3-5-haiku-20241022")
+        return config.get("anthropic_model", "claude-haiku-4-5-20251001")
     return config.get("openai_model", "gpt-4o-mini")
 
 
@@ -80,7 +80,7 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
     import anthropic
 
     api_key = config.get("anthropic_api_key", "").strip()
-    model = config.get("anthropic_model", "claude-3-5-haiku-20241022")
+    model = config.get("anthropic_model", "claude-haiku-4-5-20251001")
     client = anthropic.Anthropic(api_key=api_key)
 
     # Separate system-role messages from user/assistant messages
@@ -117,9 +117,28 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
 
     resp = client.messages.create(**kwargs)
     content = next((b.text for b in resp.content if b.type == "text"), "")
+    if json_mode and content:
+        content = _strip_code_fences(content)
     input_tokens = resp.usage.input_tokens if resp.usage else 0
     output_tokens = resp.usage.output_tokens if resp.usage else 0
     return content, input_tokens, output_tokens
+
+
+def _strip_code_fences(text):
+    """Strip markdown code fences from text.
+
+    Claude occasionally wraps JSON responses in ```json...``` blocks even when
+    instructed not to. This removes the fences so json.loads() can parse the content.
+    """
+    text = text.strip()
+    if text.startswith("```"):
+        # Remove the opening fence line (e.g. ```json\n or ```\n)
+        newline = text.find("\n")
+        text = text[newline + 1:] if newline != -1 else text[3:]
+        # Remove the closing fence
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3].rstrip()
+    return text
 
 
 def _merge_consecutive(messages):

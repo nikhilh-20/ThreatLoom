@@ -192,3 +192,28 @@ The Settings page provides a graphical interface for all configuration:
 
 !!! info "Screenshot"
     _A screenshot of the Settings page can be added here._
+
+---
+
+## Environment Variables
+
+All API keys and critical settings can be supplied as environment variables. These override any values stored in `data/config.json`, which is useful for Docker deployments where you don't want secrets baked into the image.
+
+| Variable | Overrides | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | `openai_api_key` | OpenAI API key. Always required for embeddings. |
+| `ANTHROPIC_API_KEY` | `anthropic_api_key` | Anthropic API key. Required when `LLM_PROVIDER=anthropic`. |
+| `LLM_PROVIDER` | `llm_provider` | Active LLM provider: `openai` or `anthropic`. |
+| `MALPEDIA_API_KEY` | `malpedia_api_key` | Malpedia research library API token. |
+| `DATA_DIR` | — | Directory for `config.json` and `threatlandscape.db`. |
+| `SMTP_HOST` | `smtp_host` | SMTP server hostname. |
+| `SMTP_PORT` | `smtp_port` | SMTP server port. |
+| `SMTP_USERNAME` | `smtp_username` | SMTP login username. |
+| `SMTP_PASSWORD` | `smtp_password` | SMTP login password or app password. |
+| `NOTIFICATION_EMAIL` | `notification_email` | Recipient email address for article alerts. |
+
+Set these in `docker-compose.yml` under the `environment` key, or pass them on the command line:
+
+```bash
+OPENAI_API_KEY=sk-proj-... ANTHROPIC_API_KEY=sk-ant-... LLM_PROVIDER=anthropic docker compose up
+```

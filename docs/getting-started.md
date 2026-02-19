@@ -99,14 +99,28 @@ If you prefer running Threat Loom in a container, Docker is the quickest way to 
 
 ### Quick Start
 
-```bash
-OPENAI_API_KEY=sk-proj-your-key-here docker compose up
+The recommended approach is to set your API keys directly in `docker-compose.yml` under the `environment` section:
+
+```yaml
+environment:
+  - OPENAI_API_KEY=sk-proj-your-key-here
+  - ANTHROPIC_API_KEY=sk-ant-your-key-here   # required if using Anthropic provider
+  - LLM_PROVIDER=anthropic                    # omit to default to openai
 ```
 
-Or set the key in `docker-compose.yml` under the `environment` section, then run:
+Then start the container:
 
 ```bash
 docker compose up
+```
+
+!!! warning "Placeholder values override Settings"
+    Every non-empty value in the `environment` block overrides `data/config.json`. If you leave a placeholder like `your-api-key-here` in place of an actual key, it will overwrite any key you configured via the Settings UI. Either fill in a real key or remove the line entirely.
+
+Alternatively, pass keys inline for a one-off run:
+
+```bash
+OPENAI_API_KEY=sk-proj-your-key-here docker compose up
 ```
 
 The app will be available at **http://localhost:5000**.
@@ -115,7 +129,9 @@ The app will be available at **http://localhost:5000**.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`) |
+| `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`). Always required for embeddings. |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (overrides `config.json`). Required when `LLM_PROVIDER=anthropic`. |
+| `LLM_PROVIDER` | `openai` | Active LLM provider: `openai` or `anthropic` (overrides `config.json`). |
 | `MALPEDIA_API_KEY` | — | Optional Malpedia API key |
 | `HOST` | `0.0.0.0` | Bind address (set by Dockerfile) |
 | `PORT` | `5000` | Listen port |
