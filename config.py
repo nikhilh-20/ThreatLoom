@@ -45,7 +45,6 @@ def get_default_config():
             {"name": "Infosecurity Magazine", "url": "https://www.infosecurity-magazine.com/rss/news/", "enabled": True},
             {"name": "HackRead", "url": "https://hackread.com/feed/", "enabled": True},
             {"name": "SC Media", "url": "https://www.scworld.com/rss", "enabled": True},
-            {"name": "Cyber Defense Magazine", "url": "https://www.cyberdefensemagazine.com/feed/", "enabled": False},
             {"name": "The Record", "url": "https://therecord.media/feed", "enabled": True},
             {"name": "Schneier on Security", "url": "https://www.schneier.com/feed/atom/", "enabled": True},
         ],
@@ -56,6 +55,7 @@ def get_default_config():
         "smtp_use_tls": True,
         "notification_email": "",
         "email_notifications_enabled": False,
+        "report_token": "",
     }
 
 

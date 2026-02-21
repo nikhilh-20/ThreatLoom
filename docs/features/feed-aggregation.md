@@ -90,6 +90,29 @@ You can add any RSS or Atom feed as a source. See [Configuration — Adding Cust
     - `/feed.xml` or `/rss.xml`
     - Check the page source for `<link rel="alternate" type="application/rss+xml">`
 
+## URL Ingestion
+
+In addition to scheduled feed fetching, you can process specific article URLs on demand using the **Ingest URLs** button in the dashboard header.
+
+### How It Works
+
+1. Click **Ingest URLs** in the header
+2. Paste one URL per line in the dialog
+3. Click **Process** — the pipeline runs scrape → cost gate → summarize → embed for each new URL
+
+URLs already in the database are skipped. Invalid schemes (non-http/https) are rejected. The job runs in the background using the same pipeline lock as a full refresh.
+
+### API
+
+```json
+POST /api/ingest-urls
+{
+  "urls": ["https://example.com/threat-report"]
+}
+```
+
+This is equivalent to adding a one-off article source without modifying your feed list.
+
 ## Skipped Content
 
 The fetcher automatically skips URLs pointing to non-web content:

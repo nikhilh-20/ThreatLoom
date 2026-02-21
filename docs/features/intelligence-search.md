@@ -117,3 +117,20 @@ Returns ranked articles with relevance scores, without generating a chat respons
 - **Context window** — The LLM sees at most ~11 articles per query. Highly broad queries may miss relevant articles beyond the top 15.
 - **No real-time data** — Answers are based on ingested articles, not live internet searches.
 - **Conversation length** — Only the last 6 messages are sent to the LLM. Long conversations lose early context.
+
+## Safety Guardrails
+
+The Intelligence chat system prompt includes explicit allow/block rules:
+
+**Allowed:**
+- Explaining how attack techniques work (defensive context)
+- Analysing threat actor TTPs, malware behaviour, and CVE details from ingested articles
+- Recommending mitigations and defensive tooling
+- General threat intelligence Q&A
+
+**Blocked:**
+- Requests to perform attacks on external systems
+- Generating exploit code or attack tools
+- Detailed operational guidance for offensive activities
+
+Attempts to bypass these rules via prompt injection or jailbreak patterns are explicitly guarded against. Blocked requests receive a brief refusal explaining what is and isn't supported.

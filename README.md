@@ -22,6 +22,7 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 - **Trend Forecasting** — Category-level trend + 3-6 month forecast. Drill into specific threat actors, malware families, and offensive tooling. Cost estimate shown before generation; actual cost shown after.
 - **Time-Period Filter** — Filter the entire feed view and all category analysis by 24 h, 7 d, 30 d, or 90 d lookback with one click.
 - **Email Notifications** — Per-article email alerts with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original source. Configure any SMTP provider (Gmail, Outlook, SendGrid). Uses only Python stdlib — no extra dependencies.
+- **Pipeline Controls** — On-demand header buttons to trigger feed refresh (full or since last retrieval), generate embeddings for already-summarized articles, ingest specific article URLs without a full feed fetch, and abort a running pipeline between stages. Cost estimate shown before summarization; actual cost shown after.
 - **Automatic Categorization** — Articles are sorted into 9 threat categories (Malware, Vulnerabilities, Threat Actors, Phishing, Supply Chain, etc.) with entity-level subcategories for 300+ MITRE ATT&CK groups and software families.
 
 ## Requirements
@@ -91,6 +92,7 @@ On first run, a `data/config.json` file is created with defaults. You can edit i
   "llm_provider": "openai",
   "fetch_interval_minutes": 30,
   "malpedia_api_key": "",
+  "report_token": "",
   "feeds": [
     {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "enabled": true},
     {"name": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "enabled": true},
@@ -124,6 +126,8 @@ API keys and server settings can be configured via environment variables, which 
 3. Enter your API key and click **Test** to verify
 4. Select your preferred model (see tables below)
 5. Click **Save Settings**
+
+> **Report Token (optional):** Set `report_token` in `config.json` or via the Android app Settings → Reporting section to require a token when submitting LLM output reports via `POST /api/report`.
 
 > Embeddings for semantic search always use OpenAI (`text-embedding-3-small`). An OpenAI key is required even when using Anthropic for summarization.
 
@@ -199,9 +203,10 @@ RSS Feeds / Malpedia
 1. **Fetch** — Download RSS/Atom entries from enabled feeds, filter by date, deduplicate by URL, batch-classify relevance via LLM
 2. **Malpedia** — Parse BibTeX bibliography, same relevance filtering (requires API key)
 3. **Scrape** — Download article HTML using browser-like headers, extract text with trafilatura (30s timeout per article)
-4. **Summarize** — Generate structured summary with executive overview, novelty, details, mitigations, tags, and attack flow (12,000 char input limit)
-5. **Notify** — Send email alert with the full analysis for each summarized article (if enabled; failures never block the pipeline)
-6. **Embed** — Generate 1536-dim vectors for semantic search (batches of 50)
+4. **Cost Gate** — Estimate API cost and prompt for confirmation before summarization; pipeline can be aborted here
+5. **Summarize** — Generate structured summary with executive overview, novelty, details, mitigations, tags, and attack flow (12,000 char input limit)
+6. **Notify** — Send email alert with the full analysis for each summarized article (if enabled; failures never block the pipeline)
+7. **Embed** — Generate 1536-dim vectors for semantic search (batches of 50)
 
 Each stage only processes new/unprocessed articles. The pipeline is non-blocking — browse while it runs.
 
@@ -245,21 +250,25 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 | GET | `/api/articles` | Paginated article list (params: `source_id`, `search`, `tag`, `page`, `limit`) |
 | GET | `/api/articles/<id>` | Single article with full summary |
 | GET | `/api/articles/categorized` | Articles grouped by threat category (params: `days`) |
+| DELETE | `/api/articles/<id>/summary` | Remove an article's AI summary and embeddings |
 
 ### Sources & Stats
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/api/sources` | All configured feed sources |
-| GET | `/api/stats` | Database statistics (articles, sources, summaries, 24h count) |
+| GET | `/api/stats` | Database statistics (articles, sources, summaries, pending/failed counts, has_api_key) |
 
 ### Pipeline Control
 
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/api/refresh` | Trigger manual pipeline (body: `{"days": 1, "since_last_fetch": false}`) |
-| GET | `/api/refresh-status` | Poll refresh status (`{"is_refreshing": bool}`) |
-| POST | `/api/clear-db` | Delete all articles and summaries (preserves sources) |
+| GET | `/api/refresh-status` | Poll pipeline status (stage, cost estimate, abort state) |
+| POST | `/api/abort` | Abort the running pipeline between stages |
+| POST | `/api/embed` | Generate embeddings for all summarized articles that don't have one yet |
+| POST | `/api/ingest-urls` | Scrape and summarize specific article URLs without a full feed fetch |
+| POST | `/api/clear-db` | Delete articles/summaries; body `{"days": N}` limits to articles older than N days (0 = all) |
 
 ### Categories & Insights
 
@@ -286,6 +295,7 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 | POST | `/api/test-key` | Validate OpenAI API key |
 | POST | `/api/test-malpedia-key` | Validate Malpedia API key |
 | POST | `/api/test-email` | Send test email notification (accepts SMTP settings in body) |
+| POST | `/api/report` | Send an LLM output report email to the developer (body: `{"type", "identifier", "llm_content", "metadata", "user_note", "token"}`) |
 
 ## Database
 

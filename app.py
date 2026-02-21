@@ -11,7 +11,10 @@ from config import load_config, save_config
 from cost_tracker import cost_tracker, _lookup_pricing
 from database import (
     _compute_category_hash,
+    article_exists,
+    clear_articles_before_days,
     clear_database,
+    delete_article_summary,
     get_article,
     get_articles,
     get_articles_for_category,
@@ -23,19 +26,25 @@ from database import (
     get_subcategories,
     get_trend_analyses,
     init_db,
+    insert_article,
     save_category_insight,
     upsert_source,
 )
 from scheduler import (
+    abort_pipeline,
     approve_cost,
     decline_cost,
     dismiss_actual_cost,
     get_actual_cost,
     get_cost_estimate,
     get_pipeline_stage,
+    is_aborting,
+    is_embedding_only,
     is_refreshing,
     start_scheduler,
+    trigger_embed,
     trigger_manual_refresh,
+    trigger_process_pending,
 )
 
 # Configure logging
@@ -170,7 +179,9 @@ def api_sources():
 @app.route("/api/stats")
 def api_stats():
     """Return aggregate dashboard statistics as JSON."""
+    from llm_client import has_api_key
     stats = get_stats()
+    stats["has_api_key"] = has_api_key()
     return jsonify(stats)
 
 
@@ -200,17 +211,33 @@ def api_refresh():
 
 @app.route("/api/clear-db", methods=["POST"])
 def api_clear_db():
-    """Clear all data from the database.
+    """Clear articles from the database, optionally limited by age.
+
+    Request body (JSON, optional):
+        days: If provided and > 0, delete only articles fetched more
+              than this many days ago. If 0 or absent, clear everything.
 
     Returns:
-        JSON with ``status`` (``"ok"`` or ``"error"``). Returns 409
-        if a refresh is currently running.
+        JSON with ``status`` (``"ok"`` or ``"error"``), and ``deleted``
+        count when using the ``days`` filter. Returns 409 if a refresh
+        is currently running.
     """
     if is_refreshing():
         return jsonify({"status": "error", "error": "Cannot clear while refresh is running"}), 409
     try:
-        clear_database()
-        return jsonify({"status": "ok"})
+        data = request.get_json(silent=True) or {}
+        days = data.get("days", 0)
+        try:
+            days = int(days)
+        except (ValueError, TypeError):
+            days = 0
+
+        if days > 0:
+            deleted = clear_articles_before_days(days)
+            return jsonify({"status": "ok", "deleted": deleted})
+        else:
+            clear_database()
+            return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
@@ -220,14 +247,119 @@ def api_refresh_status():
     """Check pipeline refresh status including cost confirmation state.
 
     Returns:
-        JSON with ``is_refreshing``, ``stage``, ``cost_estimate``, ``actual_cost``.
+        JSON with ``is_refreshing``, ``is_embedding``, ``is_aborting``,
+        ``stage``, ``cost_estimate``, ``actual_cost``.
     """
     return jsonify({
-        "is_refreshing": is_refreshing(),
+        "is_refreshing": is_refreshing() or is_embedding_only(),
+        "is_embedding": is_embedding_only(),
+        "is_aborting": is_aborting(),
         "stage": get_pipeline_stage(),
         "cost_estimate": get_cost_estimate(),
         "actual_cost": get_actual_cost(),
     })
+
+
+@app.route("/api/abort", methods=["POST"])
+def api_abort():
+    """Request the running pipeline or embed job to stop between stages.
+
+    Returns:
+        JSON with ``status`` (``"ok"``).
+    """
+    abort_pipeline()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/embed", methods=["POST"])
+def api_embed():
+    """Trigger embedding generation for all pending summarized articles.
+
+    Returns:
+        JSON with ``status`` (``"started"`` or ``"already_running"`` or ``"error"``).
+    """
+    if is_refreshing():
+        return jsonify({"status": "error", "error": "Cannot embed while refresh is running"})
+    if is_embedding_only():
+        return jsonify({"status": "already_running"})
+    started = trigger_embed()
+    if started:
+        return jsonify({"status": "started"})
+    return jsonify({"status": "already_running"})
+
+
+@app.route("/api/articles/<int:article_id>/summary", methods=["DELETE"])
+def api_delete_article_summary(article_id):
+    """Delete the summary and embeddings for a single article.
+
+    The article row itself is preserved; only ``summaries`` and
+    ``article_embeddings`` entries are removed.
+
+    Args:
+        article_id: The article's integer ID from the URL path.
+
+    Returns:
+        JSON with ``status`` (``"ok"`` or ``"error"``).
+    """
+    try:
+        delete_article_summary(article_id)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/api/ingest-urls", methods=["POST"])
+def api_ingest_urls():
+    """Ingest a list of article URLs for one-time processing.
+
+    Inserts each URL into the database under a ``Manual`` source (if
+    not already present), then triggers scrape → summarize → embed in
+    the background. Requires that no other pipeline job is running.
+
+    Request body (JSON):
+        urls: List of article URL strings (http/https only).
+
+    Returns:
+        JSON with ``status``, ``inserted`` count, and ``skipped`` count.
+    """
+    if is_refreshing():
+        return jsonify({"status": "error", "error": "Cannot ingest while refresh is running"}), 409
+
+    data = request.get_json(silent=True) or {}
+    raw_urls = data.get("urls", [])
+
+    valid_urls = [
+        u.strip() for u in raw_urls
+        if isinstance(u, str) and u.strip().startswith(("http://", "https://"))
+    ]
+    if not valid_urls:
+        return jsonify({"status": "error", "error": "No valid URLs provided"}), 400
+
+    source_id = upsert_source("Manual", "manual://ingested", enabled=True)
+
+    inserted = 0
+    skipped = 0
+    for url in valid_urls:
+        if article_exists(url):
+            skipped += 1
+            continue
+        import os as _os
+        title = _os.path.basename(url.rstrip("/")) or url
+        art_id = insert_article(source_id, title, url)
+        if art_id:
+            inserted += 1
+
+    if inserted > 0:
+        started = trigger_process_pending()
+        if not started:
+            return jsonify({
+                "status": "ok",
+                "inserted": inserted,
+                "skipped": skipped,
+                "note": "URLs inserted; processing will start on next refresh (pipeline busy)",
+            })
+
+    return jsonify({"status": "ok", "inserted": inserted, "skipped": skipped})
 
 
 @app.route("/api/cost/approve", methods=["POST"])
@@ -417,6 +549,29 @@ def api_test_email():
 
     success, error = send_test_email(smtp_cfg=smtp_cfg)
     return jsonify({"success": success, "error": error})
+
+
+@app.route("/api/report", methods=["POST"])
+def api_report():
+    cfg = load_config()
+    token = cfg.get("report_token", "").strip()
+    data = request.get_json(silent=True) or {}
+
+    # Optional token check — skip if no token is configured
+    if token and data.get("token") != token:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    report_type = data.get("type", "Unknown")
+    identifier  = data.get("identifier", "")
+    llm_content = data.get("llm_content", "")
+    metadata    = data.get("metadata", {})
+    user_note   = data.get("user_note", "")
+
+    from notifier import send_report_email
+    ok, err = send_report_email(report_type, identifier, llm_content, metadata, user_note)
+    if ok:
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": err}), 500
 
 
 @app.route("/api/subcategories")

@@ -108,6 +108,12 @@
             <a href="{{ article.url }}" target="_blank" rel="noopener" class="btn btn-primary">
                 Read Original Article &rarr;
             </a>
+            {% if article.summary_text %}
+            <button class="btn btn-danger btn-sm" id="delete-summary-btn" onclick="deleteArticleSummary({{ article.id }})" title="Remove the AI-generated summary and embeddings for this article. The article itself is kept.">
+                &#128465; Delete Summary &amp; Embeddings
+            </button>
+            <span class="save-status" id="delete-summary-status"></span>
+            {% endif %}
         </div>
 
         {% if article.model_used %}
@@ -218,6 +224,30 @@
 
         const banner = document.getElementById('sequence-complete');
         if (banner) banner.classList.add('visible');
+    }
+
+    async function deleteArticleSummary(articleId) {
+        if (!confirm('This will permanently delete the AI-generated summary and embeddings for this article. The article itself will be kept.\n\nContinue?')) return;
+
+        const btn = document.getElementById('delete-summary-btn');
+        const status = document.getElementById('delete-summary-status');
+
+        if (btn) btn.disabled = true;
+        if (status) { status.textContent = 'Deleting...'; status.className = 'save-status'; }
+
+        try {
+            const res = await fetch(`/api/articles/${articleId}/summary`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                if (status) { status.textContent = 'Deleted. Reload the page to reflect changes.'; status.className = 'save-status success'; }
+                if (btn) btn.style.display = 'none';
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (e) {
+            if (status) { status.textContent = 'Failed: ' + e.message; status.className = 'save-status error'; }
+            if (btn) btn.disabled = false;
+        }
     }
 </script>
 {% endblock %}

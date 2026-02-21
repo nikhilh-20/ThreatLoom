@@ -15,6 +15,7 @@ On first run, `data/config.json` is created with default values:
   "llm_provider": "openai",
   "fetch_interval_minutes": 30,
   "malpedia_api_key": "",
+  "report_token": "",
   "feeds": [
     {
       "name": "The Hacker News",
@@ -106,6 +107,12 @@ To get a key:
 
 See [Email Notifications](features/email-notifications.md) for setup guides and common SMTP provider configurations.
 
+### Reporting
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `report_token` | string | `""` | Optional pre-shared token for the `/api/report` endpoint. When set, report submissions must include a matching token. Leave empty to accept reports without authentication (suitable for local/home-network deployments). |
+
 ### Feed Management
 
 The `feeds` array contains all RSS/Atom sources:
@@ -188,7 +195,14 @@ The Settings page provides a graphical interface for all configuration:
 - **Email Notifications** — Configure SMTP and test email delivery
 - **Feed Management** — Enable/disable feeds, add/remove custom sources (http/https URLs only)
 - **Refresh Controls** — Trigger manual refresh with lookback period
-- **Clear Database** — Remove all articles and summaries (preserves source list)
+- **Clear Database** — Remove articles/summaries older than a selected period (24 h / 7 d / 30 d / 90 d / all time); source list is preserved
+
+The dashboard header also provides direct pipeline controls:
+
+- **Refresh / Since Last Retrieval** — Trigger full or incremental feed refresh
+- **Generate Embeddings** — Embed all summarized articles that don't have a vector yet
+- **Ingest URLs** — Paste article URLs to scrape and summarize without a full feed fetch
+- **Abort** — Stop the running pipeline after the current batch (appears only while a pipeline is active)
 
 !!! info "Screenshot"
     _A screenshot of the Settings page can be added here._

@@ -77,6 +77,7 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, co
 
 
 def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode, config):
+    import time
     import anthropic
 
     api_key = config.get("anthropic_api_key", "").strip()
@@ -115,13 +116,38 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
     if final_system:
         kwargs["system"] = final_system
 
-    resp = client.messages.create(**kwargs)
-    content = next((b.text for b in resp.content if b.type == "text"), "")
-    if json_mode and content:
-        content = _strip_code_fences(content)
-    input_tokens = resp.usage.input_tokens if resp.usage else 0
-    output_tokens = resp.usage.output_tokens if resp.usage else 0
-    return content, input_tokens, output_tokens
+    retry_delay = 10  # seconds; doubles each attempt, capped at 120s
+    for attempt in range(4):
+        try:
+            resp = client.messages.create(**kwargs)
+            content = next((b.text for b in resp.content if b.type == "text"), "")
+            if json_mode and content:
+                content = _strip_code_fences(content)
+            input_tokens = resp.usage.input_tokens if resp.usage else 0
+            output_tokens = resp.usage.output_tokens if resp.usage else 0
+            return content, input_tokens, output_tokens
+        except anthropic.RateLimitError as e:
+            # Honour the server's Retry-After header when present
+            wait = retry_delay
+            try:
+                ra = getattr(getattr(e, "response", None), "headers", {}).get("retry-after")
+                if ra:
+                    wait = max(int(ra), retry_delay)
+            except Exception:
+                pass
+            logger.warning(
+                f"Anthropic rate limited, waiting {wait}s before retry (attempt {attempt + 1})"
+            )
+            time.sleep(wait)
+            retry_delay = min(retry_delay * 2, 120)
+        except anthropic.APIError as e:
+            if attempt < 3:
+                logger.warning(f"Anthropic API error (attempt {attempt + 1}): {e}, retrying...")
+                time.sleep(2)
+            else:
+                raise
+
+    raise RuntimeError("Anthropic API: all retries failed (rate limit)")
 
 
 def _strip_code_fences(text):

@@ -32,8 +32,17 @@ async function loadStats() {
         if (el('stat-articles')) el('stat-articles').textContent = data.total_articles;
         if (el('stat-sources')) el('stat-sources').textContent = data.total_sources;
         if (el('stat-summaries')) el('stat-summaries').textContent = data.total_summaries;
-        if (el('stat-unsummarized')) el('stat-unsummarized').textContent = data.unsummarized ?? '--';
-        if (el('stat-scrape-failed')) el('stat-scrape-failed').textContent = data.scrape_failed ?? '--';
+
+        const setConditional = (itemId, valueId, val) => {
+            const item = el(itemId);
+            const value = el(valueId);
+            if (!item || !value) return;
+            value.textContent = val;
+            item.style.display = val > 0 ? 'flex' : 'none';
+        };
+        setConditional('stat-item-unsummarized', 'stat-unsummarized', data.unsummarized ?? 0);
+        setConditional('stat-item-scrape-failed', 'stat-scrape-failed', data.scrape_failed ?? 0);
+        setConditional('stat-item-failed-summaries', 'stat-failed-summaries', data.failed_summaries ?? 0);
     } catch (e) {
         console.error('Failed to load stats:', e);
     }
@@ -109,7 +118,7 @@ async function loadCategories() {
                 const statsRes = await fetch('/api/stats');
                 const stats = await statsRes.json();
                 const warning = document.getElementById('api-key-warning');
-                if (warning && stats.total_articles === 0) {
+                if (warning && !stats.has_api_key) {
                     warning.style.display = 'block';
                 }
             }
@@ -897,12 +906,20 @@ function pollRefreshStatus(btn, status) {
         summarize: 'Summarizing articles...',
         embed: 'Generating embeddings...',
         done: 'Refresh complete!',
+        aborted: 'Stopped.',
         error: 'Pipeline error',
     };
+
+    const abortBtn = document.getElementById('abort-btn');
+    const embedBtn = document.getElementById('embed-btn');
+    if (abortBtn) { abortBtn.style.display = 'inline-flex'; abortBtn.disabled = false; }
+    if (embedBtn) embedBtn.disabled = true;
 
     const interval = setInterval(async () => {
         if (Date.now() - startTime > MAX_POLL_MS) {
             clearInterval(interval);
+            if (abortBtn) abortBtn.style.display = 'none';
+            if (embedBtn) embedBtn.disabled = false;
             if (status) {
                 status.textContent = 'Still processing in background...';
                 status.className = 'refresh-status';
@@ -938,8 +955,11 @@ function pollRefreshStatus(btn, status) {
 
             if (!refreshData.is_refreshing) {
                 clearInterval(interval);
+                if (abortBtn) abortBtn.style.display = 'none';
+                if (embedBtn) embedBtn.disabled = false;
                 if (status) {
-                    status.textContent = 'Refresh complete!';
+                    const label = refreshData.stage === 'aborted' ? 'Stopped.' : 'Complete!';
+                    status.textContent = label;
                     status.className = 'refresh-status';
                     setTimeout(() => { status.textContent = ''; }, 5000);
                 }
@@ -949,6 +969,8 @@ function pollRefreshStatus(btn, status) {
             }
         } catch (e) {
             clearInterval(interval);
+            if (abortBtn) abortBtn.style.display = 'none';
+            if (embedBtn) embedBtn.disabled = false;
             resetBtns();
         }
     }, POLL_INTERVAL);
@@ -1218,9 +1240,18 @@ function removeFeed(btn) {
 }
 
 async function clearDatabase() {
-    if (!confirm('This will delete ALL articles, summaries, and correlations. Sources and settings are kept.\n\nAre you sure?')) {
-        return;
+    const periodSelect = document.getElementById('clear-db-period');
+    const days = periodSelect ? parseInt(periodSelect.value) : 0;
+
+    let confirmMsg;
+    if (days > 0) {
+        const label = periodSelect.options[periodSelect.selectedIndex].text;
+        confirmMsg = `This will delete articles fetched more than ${label} ago, along with their summaries and embeddings.\n\nAre you sure?`;
+    } else {
+        confirmMsg = 'This will delete ALL articles, summaries, and correlations. Sources and settings are kept.\n\nAre you sure?';
     }
+
+    if (!confirm(confirmMsg)) return;
 
     const btn = document.getElementById('clear-db-btn');
     const status = document.getElementById('clear-db-status');
@@ -1229,13 +1260,113 @@ async function clearDatabase() {
     if (status) { status.textContent = 'Clearing...'; status.className = 'save-status'; }
 
     try {
-        const res = await fetch('/api/clear-db', { method: 'POST' });
+        const res = await fetch('/api/clear-db', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days }),
+        });
         const data = await res.json();
         if (data.status === 'ok') {
-            if (status) { status.textContent = 'Database cleared!'; status.className = 'save-status success'; }
+            const msg = days > 0
+                ? `Deleted ${data.deleted ?? '?'} article(s).`
+                : 'Database cleared!';
+            if (status) { status.textContent = msg; status.className = 'save-status success'; }
             cachedCategories = null;
             loadCategories();
             loadStats();
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    } catch (e) {
+        if (status) { status.textContent = 'Failed: ' + e.message; status.className = 'save-status error'; }
+    }
+    if (btn) btn.disabled = false;
+}
+
+async function triggerEmbed() {
+    const btn = document.getElementById('embed-btn');
+    const status = document.getElementById('refresh-status');
+
+    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+    if (status) { status.textContent = 'Starting embedding job...'; status.className = 'refresh-status'; }
+
+    try {
+        const res = await fetch('/api/embed', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'started' || data.status === 'already_running') {
+            if (status) status.textContent = 'Generating embeddings...';
+            pollRefreshStatus(btn, status);
+        } else {
+            throw new Error(data.error || 'Could not start embed job');
+        }
+    } catch (e) {
+        if (status) { status.textContent = 'Error: ' + e.message; status.className = 'refresh-status error'; }
+        if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+    }
+}
+
+async function abortPipeline() {
+    try {
+        await fetch('/api/abort', { method: 'POST' });
+        const status = document.getElementById('refresh-status');
+        if (status) { status.textContent = 'Abort requested, stopping after current batch...'; status.className = 'refresh-status'; }
+        const abortBtn = document.getElementById('abort-btn');
+        if (abortBtn) abortBtn.disabled = true;
+    } catch (e) {
+        console.error('Abort failed:', e);
+    }
+}
+
+function showIngestDialog() {
+    const modal = document.getElementById('ingest-modal');
+    const status = document.getElementById('ingest-urls-status');
+    if (status) { status.textContent = ''; status.className = 'save-status'; }
+    if (modal) modal.style.display = 'flex';
+}
+
+function hideIngestDialog() {
+    const modal = document.getElementById('ingest-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function ingestUrls() {
+    const textarea = document.getElementById('ingest-urls-input');
+    const btn = document.getElementById('ingest-submit-btn');
+    const status = document.getElementById('ingest-urls-status');
+
+    if (!textarea) return;
+    const raw = textarea.value.trim();
+    if (!raw) {
+        if (status) { status.textContent = 'Please enter at least one URL.'; status.className = 'save-status error'; }
+        return;
+    }
+
+    const urls = raw.split('\n').map(u => u.trim()).filter(u => u);
+    if (btn) btn.disabled = true;
+    if (status) { status.textContent = 'Submitting URLs...'; status.className = 'save-status'; }
+
+    try {
+        const res = await fetch('/api/ingest-urls', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls }),
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            let msg = `Inserted ${data.inserted} URL(s)`;
+            if (data.skipped > 0) msg += `, ${data.skipped} already in DB`;
+            if (data.note) msg += '. ' + data.note;
+            else if (data.inserted > 0) msg += '. Processing started.';
+            if (status) { status.textContent = msg; status.className = 'save-status success'; }
+            if (data.inserted > 0) {
+                textarea.value = '';
+                // Close dialog after short delay so user sees the success message
+                setTimeout(hideIngestDialog, 2000);
+                const refreshStatus = document.getElementById('refresh-status');
+                const refreshBtn = document.getElementById('refresh-btn');
+                if (refreshStatus) refreshStatus.textContent = 'Processing ingested articles...';
+                pollRefreshStatus(refreshBtn, refreshStatus);
+            }
         } else {
             throw new Error(data.error || 'Unknown error');
         }

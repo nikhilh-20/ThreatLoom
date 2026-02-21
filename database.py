@@ -435,12 +435,21 @@ def get_stats():
     conn = get_connection()
     total_articles = conn.execute("SELECT COUNT(*) as c FROM articles").fetchone()["c"]
     total_sources = conn.execute("SELECT COUNT(*) as c FROM sources WHERE enabled=1").fetchone()["c"]
-    total_summaries = conn.execute("SELECT COUNT(*) as c FROM summaries").fetchone()["c"]
+    total_summaries = conn.execute(
+        "SELECT COUNT(*) as c FROM summaries "
+        "WHERE model_used != 'failed' AND summary_text IS NOT NULL AND summary_text != ''"
+    ).fetchone()["c"]
     recent = conn.execute(
         "SELECT COUNT(*) as c FROM articles WHERE fetched_date >= datetime('now', '-24 hours')"
     ).fetchone()["c"]
     unsummarized = get_unsummarized_count()
     scrape_failed = get_scrape_failed_count()
+    failed_summaries = conn.execute(
+        "SELECT COUNT(*) as c FROM summaries sm "
+        "JOIN articles a ON a.id = sm.article_id "
+        "WHERE (sm.model_used = 'failed' OR sm.summary_text IS NULL OR sm.summary_text = '') "
+        "AND a.content_raw IS NOT NULL AND a.content_raw != ''"
+    ).fetchone()["c"]
     return {
         "total_articles": total_articles,
         "total_sources": total_sources,
@@ -448,6 +457,7 @@ def get_stats():
         "articles_last_24h": recent,
         "unsummarized": unsummarized,
         "scrape_failed": scrape_failed,
+        "failed_summaries": failed_summaries,
     }
 
 
@@ -526,16 +536,28 @@ def get_unembedded_articles(limit=50):
 def get_embedding_stats():
     """Get counts of embedded vs summarized articles.
 
+    ``total_embedded`` is restricted to articles that also have a valid
+    (non-failed, non-empty) summary, so it can never exceed
+    ``total_summarized`` even if stale embeddings exist for articles
+    whose summaries were later invalidated or regenerated as failed.
+
     Returns:
         A dict with ``total_summarized`` and ``total_embedded`` counts.
     """
     conn = get_connection()
     total_summarized = conn.execute(
-        "SELECT COUNT(*) as c FROM summaries WHERE model_used != 'failed' "
+        "SELECT COUNT(*) as c FROM summaries "
+        "WHERE model_used != 'failed' "
         "AND summary_text IS NOT NULL AND summary_text != ''"
     ).fetchone()["c"]
     total_embedded = conn.execute(
-        "SELECT COUNT(*) as c FROM article_embeddings"
+        """
+        SELECT COUNT(*) as c
+        FROM article_embeddings ae
+        JOIN summaries sm ON sm.article_id = ae.article_id
+        WHERE sm.model_used != 'failed'
+          AND sm.summary_text IS NOT NULL AND sm.summary_text != ''
+        """
     ).fetchone()["c"]
     return {
         "total_summarized": total_summarized,
@@ -1170,6 +1192,54 @@ def clear_database():
         DELETE FROM articles;
         UPDATE sources SET last_fetched = NULL;
     """)
+    conn.commit()
+
+
+def clear_articles_before_days(days):
+    """Delete articles (and their summaries/embeddings) fetched more than ``days`` days ago.
+
+    Args:
+        days: Number of days. Articles with ``fetched_date`` older than
+            this threshold are deleted along with their summaries,
+            embeddings, and correlations.
+
+    Returns:
+        Number of articles deleted.
+    """
+    conn = get_connection()
+    cutoff = f"-{int(days)} days"
+    rows = conn.execute(
+        "SELECT id FROM articles WHERE fetched_date < datetime('now', ?)",
+        (cutoff,),
+    ).fetchall()
+    ids = [r[0] for r in rows]
+    if not ids:
+        return 0
+    ph = ",".join("?" * len(ids))
+    conn.execute(f"DELETE FROM article_embeddings WHERE article_id IN ({ph})", ids)
+    conn.execute(f"DELETE FROM summaries WHERE article_id IN ({ph})", ids)
+    conn.execute(
+        f"DELETE FROM article_correlations "
+        f"WHERE article_id_1 IN ({ph}) OR article_id_2 IN ({ph})",
+        ids + ids,
+    )
+    conn.execute(f"DELETE FROM articles WHERE id IN ({ph})", ids)
+    conn.commit()
+    return len(ids)
+
+
+def delete_article_summary(article_id):
+    """Delete the summary and embedding for a single article.
+
+    Removes entries from ``summaries`` and ``article_embeddings`` for
+    the given article. The article row itself is preserved.
+
+    Args:
+        article_id: The article's integer ID.
+    """
+    conn = get_connection()
+    conn.execute("DELETE FROM article_embeddings WHERE article_id = ?", (article_id,))
+    conn.execute("DELETE FROM summaries WHERE article_id = ?", (article_id,))
     conn.commit()
 
 

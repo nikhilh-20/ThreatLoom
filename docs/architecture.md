@@ -53,11 +53,13 @@ Every pipeline run — whether triggered manually or by the scheduler — execut
        │
 4. Scrape            Download article HTML → extract text
        │
-5. Summarize         LLM generates structured summary + tags
+5. Cost Gate         Estimate cost + user confirmation (or abort)
        │
-6. Notify            Send email alert per article (if enabled)
+6. Summarize         LLM generates structured summary + tags
        │
-7. Embed             Generate vector embeddings for search
+7. Notify            Send email alert per article (if enabled)
+       │
+8. Embed             Generate vector embeddings for search
 ```
 
 Each stage operates on articles the previous stage produced. Stages are idempotent — rerunning the pipeline only processes new or unprocessed articles.
@@ -70,7 +72,8 @@ Each stage operates on articles the previous stage produced. Stages are idempote
 | Fetch Feeds | `feed_fetcher.py` | 25 titles | Parse feeds, LLM relevance filter, insert new articles |
 | Fetch Malpedia | `malpedia_fetcher.py` | 25 titles | Parse BibTeX, relevance filter, insert articles |
 | Scrape | `article_scraper.py` | 10 articles | Download HTML, extract text via trafilatura |
-| Summarize | `summarizer.py` | 10 articles | Generate summary, tags, attack flow via OpenAI |
+| Cost Gate | `scheduler.py` | — | Estimate API cost, wait for user confirmation (up to 5 min), or abort |
+| Summarize | `summarizer.py` | 10 articles | Generate summary, tags, attack flow via configured LLM |
 | Notify | `notifier.py` | Per article | Send email notification for each summarized article (if enabled) |
 | Embed | `embeddings.py` | 50 articles | Generate 1536-dim vectors via text-embedding-3-small |
 
@@ -82,7 +85,13 @@ Flask application serving the UI and REST API. Handles routing, request validati
 
 ### `scheduler.py` — Pipeline Orchestrator
 
-Manages the background pipeline using APScheduler. Runs on a configurable interval (default 30 minutes). Provides a thread-locked `trigger_manual_refresh()` for on-demand runs. Only one pipeline can run at a time.
+Manages the background pipeline using APScheduler. Runs on a configurable interval (default 30 minutes). Provides three on-demand triggers, all sharing the same exclusive lock so only one job runs at a time:
+
+- `trigger_manual_refresh()` — Full pipeline: fetch → scrape → cost gate → summarize → notify → embed
+- `trigger_embed()` — Embed-only: generate embeddings for summaries that don't have one yet
+- `trigger_process_pending()` — Process-pending: scrape → cost gate → summarize → embed without fetching new feeds (used by URL ingestion)
+
+An `abort_pipeline()` function sets a flag that is checked between every stage; the pipeline exits cleanly after the current batch completes.
 
 ### `feed_fetcher.py` — RSS/Atom Ingestion
 
@@ -98,7 +107,7 @@ Downloads article HTML using a browser-like `requests.Session` (with fallback to
 
 ### `llm_client.py` — LLM Provider Abstraction
 
-Provides a unified `LLMClient` interface over OpenAI and Anthropic APIs. Callers pass a prompt and receive a response string — the active provider is selected from config (`llm_provider`). Handles provider-specific API call patterns and error normalisation. Used by `summarizer.py` and `intelligence.py`.
+Provides a unified `call_llm()` interface over OpenAI and Anthropic APIs. Callers pass a prompt and receive a `(content, input_tokens, output_tokens)` tuple — the active provider is selected from config (`llm_provider`). For Anthropic, implements exponential backoff starting at 10 s (doubling to 120 s max) on rate-limit errors, honouring the `Retry-After` response header. Used by `summarizer.py` and `intelligence.py`.
 
 ### `cost_tracker.py` — Token & Cost Tracking
 
@@ -115,7 +124,12 @@ Four core functions:
 
 ### `notifier.py` — Email Notifications
 
-Sends per-article email alerts after successful summarization. Builds inline-CSS HTML emails with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original article. Uses only Python stdlib (`smtplib`, `email.mime`) — no external dependencies. Errors are logged but never raised, so email failures cannot block the pipeline. Supports STARTTLS on port 587 by default.
+Sends two types of email:
+
+- **Article alerts** (`send_summary_email`) — Per-article notification after summarization. Builds inline-CSS HTML emails with the full structured analysis (executive summary, novelty, details, mitigations) and a link to the original article.
+- **LLM output reports** (`send_report_email`) — Developer report emails triggered from the Android app or `/api/report`. Contains the auto-captured LLM output (read-only) plus an optional user note.
+
+Uses only Python stdlib (`smtplib`, `email.mime`) — no external dependencies. Errors are logged but never raised. Supports STARTTLS on port 587 by default.
 
 ### `embeddings.py` — Vector Search
 
@@ -149,8 +163,14 @@ Main Thread
 │       ├── Scraping (ThreadPoolExecutor per article)
 │       └── Summarization / Embedding (sequential batches)
 │
-└── Manual Refresh Thread (daemon, spawned on-demand)
-    └── Same pipeline, same lock (only one runs at a time)
+├── Manual Refresh Thread (daemon, spawned on-demand)
+│   └── Full pipeline: fetch → scrape → cost gate → summarize → notify → embed
+│
+├── Embed-Only Thread (daemon, spawned on-demand)
+│   └── Embed pending articles; same lock
+│
+└── Process-Pending Thread (daemon, spawned on-demand)
+    └── Scrape + cost gate + summarize + embed without feed fetch; same lock
 ```
 
 - The pipeline uses `Lock.acquire(blocking=False)` to atomically check-and-lock — if another thread already holds the lock, the attempt is skipped immediately with no race window

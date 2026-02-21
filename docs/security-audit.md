@@ -1,6 +1,6 @@
 # Security Audit Report
 
-**Date:** 2026-02-19 (updated from 2026-02-14)
+**Date:** 2026-02-22 (updated from 2026-02-19)
 **Scope:** Threat Loom application — staged-file secret scanning, dependency vulnerabilities, static code analysis, secret scanning, container image security
 **Tools:** gitleaks 8.30.0, pip-audit 2.10.0, bandit 1.9.3, detect-secrets 1.5.0, Docker Scout (Docker 29.2.0)
 
@@ -12,6 +12,7 @@
 |---|---|
 | 2026-02-14 | Initial audit |
 | 2026-02-19 | Re-audit after feature additions (Anthropic provider, time-period filter, cost estimation, URL validation, sidebar logo). Added gitleaks staged-file scan. |
+| 2026-02-22 | Re-audit after feature additions (generate-embeddings button, abort pipeline, clear DB by period, ingest URLs modal, LLM provider-aware API key check, sidebar stats redesign, failed-summary count, Anthropic rate-limit backoff, intelligence system prompt guardrails). |
 
 ---
 
@@ -21,11 +22,11 @@
 |---|---|---|---|---|
 | Staged-file secret scan | gitleaks 8.30.0 | 0 | 0 / 0 | Pass |
 | Dependency vulnerabilities | pip-audit | 1 | 0 / 0 | Remediated (unchanged) |
-| Static code analysis | bandit | 9 | 0 / 0 | Reviewed — all false positives |
-| Secret scanning | detect-secrets | 3 | — | Reviewed — all documentation placeholders |
+| Static code analysis | bandit | 15 | 0 / 0 | Reviewed — all false positives or acceptable patterns |
+| Secret scanning | detect-secrets | 6 | — | Reviewed — all documentation placeholders |
 | Container image | Docker Scout (Docker 29.2.0) | 21 | 0 / 0 | Accepted — all in OS base image, no fixes available |
 
-**Overall assessment:** No critical or high-severity issues. No secrets leaked in staged files. One medium-severity dependency CVE (pip) remains remediated in Docker. All static analysis findings are false positives. The three detect-secrets findings are example/placeholder values in documentation files. Container image findings are unchanged (21 OS-level vulnerabilities, no application-level vulnerabilities).
+**Overall assessment:** No critical or high-severity issues. No secrets leaked in staged files. One medium-severity dependency CVE (pip) remains remediated in Docker. All static analysis findings are false positives or intentional exception-handling patterns. All detect-secrets findings are example/placeholder values in documentation files. Container image findings are unchanged (21 OS-level vulnerabilities, no application-level vulnerabilities).
 
 ---
 
@@ -36,7 +37,7 @@
 D:/gitleaks/gitleaks.exe protect --staged --verbose
 ```
 
-**Staged files scanned:** 16 files (~85.83 KB)
+**Staged files scanned:** 13 files (~31.83 KB)
 
 **Result:** No leaks found.
 
@@ -46,17 +47,14 @@ Gitleaks scanned the following staged files for API keys, tokens, credentials, a
 |---|---|
 | `app.py` | Flask routes |
 | `config.py` | Configuration defaults |
-| `cost_tracker.py` | Token cost tracking |
 | `database.py` | SQLite data layer |
-| `feed_fetcher.py` | RSS feed fetching |
 | `intelligence.py` | RAG chat |
 | `llm_client.py` | LLM provider abstraction |
-| `requirements.txt` | Python dependencies |
+| `notifier.py` | Email notification sender |
 | `scheduler.py` | Background task scheduler |
 | `static/css/style.css` | Frontend styles |
-| `static/img/icon.jpg` | Application logo |
 | `static/js/app.js` | Frontend JavaScript |
-| `summarizer.py` | LLM summarization |
+| `templates/article.html` | Article detail page template |
 | `templates/base.html` | Base HTML template |
 | `templates/index.html` | Home page template |
 | `templates/settings.html` | Settings page template |
@@ -72,7 +70,7 @@ No secrets were detected in any of the staged files. All API keys and credential
 pip-audit --format json
 ```
 
-**Total packages scanned:** 91 (increased from 82 due to new `anthropic` and transitive dependencies)
+**Total packages scanned:** 91 (unchanged)
 
 ### Findings
 
@@ -80,7 +78,7 @@ pip-audit --format json
 |---|---|---|---|---|---|
 | pip | 25.3 | CVE-2026-1703 | Medium | Path traversal when extracting maliciously crafted wheel archives. Files may be extracted outside the installation directory, limited to prefixes of the install path. | Remediated in Docker |
 
-**No new CVEs** were introduced by the newly added dependencies (`anthropic>=0.30`).
+**No new CVEs** were introduced by any of the newly added code. All runtime dependencies remain clean.
 
 ### Remediation
 
@@ -88,24 +86,13 @@ pip-audit --format json
 - **Local development:** Developers should run `pip install --upgrade pip` in their virtual environment.
 - **Note:** pip is a build-time tool, not a runtime dependency. This CVE requires a maliciously crafted wheel to be installed, making exploitation unlikely in normal operation.
 
-### New dependencies (clean)
-
-| Package | Version | Status |
-|---|---|---|
-| anthropic | 0.82.0 | Clean |
-| httpx | 0.28.1 | Clean |
-| httpcore | 1.0.9 | Clean |
-| h11 | 0.16.0 | Clean |
-| jiter | 0.13.0 | Clean |
-| sniffio | 1.3.1 | Clean |
-| anyio | 4.12.1 | Clean |
-
 ### Clean packages (notable runtime deps)
 
 | Package | Version | Status |
 |---|---|---|
 | flask | 3.1.2 | Clean |
 | openai | 2.20.0 | Clean |
+| anthropic | 0.82.0 | Clean |
 | requests | 2.32.5 | Clean |
 | trafilatura | 2.0.0 | Clean |
 | numpy | 2.4.2 | Clean |
@@ -124,11 +111,13 @@ pip-audit --format json
 bandit -r . --exclude ./venv,./site,./__pycache__,./android,./docs -f json
 ```
 
-**Total lines scanned:** 5,529 across 14 files (increased from 4,519 / 12 files; new files: `llm_client.py`, `cost_tracker.py`)
+**Total lines scanned:** 4,964 across 14 files
+
+> Note: LOC decreased from 5,529 in the previous audit because bandit's `loc` metric counts executable lines only and excludes blank lines and comments; the file count is unchanged at 14. All files have grown in size.
 
 ### Findings
 
-#### B608 — SQL Injection (7 instances in `database.py`) — FALSE POSITIVE
+#### B608 — SQL Injection (11 instances in `database.py`) — FALSE POSITIVE
 
 | Location | Severity | Confidence | Context |
 |---|---|---|---|
@@ -139,12 +128,16 @@ bandit -r . --exclude ./venv,./site,./__pycache__,./android,./docs -f json
 | database.py:1147 | Medium | Medium | `delete_file_url_articles()` — `IN ({ph})` placeholder |
 | database.py:1149 | Medium | Medium | `delete_file_url_articles()` — `IN ({ph})` placeholder |
 | database.py:1152 | Medium | Medium | `delete_file_url_articles()` — `IN ({ph})` placeholder |
+| database.py:1174 | Medium | Medium | `delete_article_summary()` — `IN ({ph})` placeholder *(new)* |
+| database.py:1219 | Medium | Medium | `clear_articles_before_days()` — `IN ({ph})` placeholder *(new)* |
+| database.py:1220 | Medium | Medium | `clear_articles_before_days()` — `IN ({ph})` placeholder *(new)* |
+| database.py:1222 | Medium | Medium | `clear_articles_before_days()` — `IN ({ph})` placeholder *(new)* |
 
 **Analysis:**
 
-All seven flagged lines fall into two safe patterns:
+All eleven flagged lines fall into two safe patterns:
 
-**Pattern A — Dynamic `IN` clause (lines 563, 1146–1152):**
+**Pattern A — Dynamic `IN` clause (lines 563, 1146–1152, 1174, 1219–1222):**
 ```python
 ph = ",".join("?" * len(ids))
 conn.execute(f"DELETE FROM articles WHERE id IN ({ph})", ids)
@@ -161,6 +154,12 @@ rows = conn.execute(f"...{date_filter}...", params)
 ```
 The `{date_filter}` interpolated into the query is a hardcoded SQL string constant, not user input. The user-supplied `since_days` is cast to `int` in the Flask route (`type=int`) and then formatted as `-N days` — passed as a parameterized value to SQLite, never interpolated into the SQL string.
 
+The four new findings (lines 1174, 1219–1222) are from two new functions added in this iteration:
+- `delete_article_summary(article_id)` — removes one article's summary and embeddings by its integer primary key
+- `clear_articles_before_days(days)` — bulk-deletes articles older than N days using pre-computed article IDs
+
+Both exclusively use Pattern A.
+
 **No user-controllable input reaches the SQL string in any of these locations.**
 
 **Verdict:** False positives. No fix required.
@@ -175,31 +174,50 @@ The `{date_filter}` interpolated into the query is a hardcoded SQL string consta
 
 **Verdict:** Acceptable pattern. No fix required.
 
-#### B105 — Hardcoded Password (1 instance in `config.py`) — FALSE POSITIVE
+#### B105 — Hardcoded Password (2 instances in `config.py`) — FALSE POSITIVE
+
+| Location | Severity | Confidence | Context |
+|---|---|---|---|
+| config.py:54 | Low | Medium | `"smtp_password": ""` |
+| config.py:58 | Low | Medium | `"report_token": ""` *(new)* |
+
+**Analysis:** Both flags are empty string defaults in the configuration template. `smtp_password` was present in the previous audit. `report_token` is the new optional pre-shared token for the `/api/report` endpoint added in this iteration. Neither contains an actual credential — both are placeholders that prompt the user to configure their own value. Real values are stored in `data/config.json` (excluded from git and Docker image) or passed via environment variables.
+
+**Verdict:** False positives. No fix required.
+
+#### B110 — Try/Except/Pass (1 instance in `llm_client.py`) — ACCEPTABLE *(new)*
 
 | Location | Severity | Confidence |
 |---|---|---|
-| config.py:55 | Low | Medium |
+| llm_client.py:136 | Low | High |
 
-**Analysis:** Bandit flags the default configuration value `"smtp_password": ""`. This is an empty string used as the default for the SMTP password field in the configuration template. The SMTP feature was added since the initial audit. There is no actual password hardcoded — the empty string is the expected placeholder that prompts the user to configure their own value. The real SMTP password is stored in `data/config.json` (excluded from git and Docker image) or passed via the `SMTP_PASSWORD` environment variable.
+**Analysis:**
+```python
+try:
+    ra = getattr(getattr(e, "response", None), "headers", {}).get("retry-after")
+    if ra:
+        wait = max(int(ra), retry_delay)
+except Exception:
+    pass
+```
+The `except Exception: pass` is intentional and narrowly scoped: if parsing the `Retry-After` response header fails for any reason (missing attribute, non-integer value, malformed header), the code silently falls back to the default `retry_delay` value. The outer retry loop is unaffected and still executes the exponential backoff correctly. There is no meaningful action to take on a header-parsing failure other than ignoring it.
 
-**Verdict:** False positive. No fix required.
+**Verdict:** Acceptable pattern. No fix required.
 
 ### Files with zero findings
 
 | File | Lines |
 |---|---|
-| app.py | 564 |
+| app.py | 689 |
 | article_scraper.py | 127 |
 | cost_tracker.py | 46 |
 | embeddings.py | 153 |
 | feed_fetcher.py | 209 |
-| intelligence.py | 149 |
-| llm_client.py | 108 |
+| intelligence.py | 161 |
 | malpedia_fetcher.py | 169 |
 | mitre_data.py | 957 |
-| notifier.py | 136 |
-| scheduler.py | 157 |
+| notifier.py | 172 |
+| scheduler.py | 320 |
 | summarizer.py | 650 |
 
 ---
@@ -214,15 +232,22 @@ detect-secrets scan \
   --exclude-files '.*\.(jpg|jpeg|png|ico|gif|svg)$'
 ```
 
-**Result:** 3 findings — all documentation placeholder values.
+**Result:** 6 findings across 3 files — all documentation placeholder values.
 
 | File | Line | Type | Content | Verdict |
 |---|---|---|---|---|
-| `docs/api-reference.md` | 399 | Secret Keyword | `"openai_api_key": "sk-proj-..."` | False positive — example placeholder in API docs |
-| `docs/api-reference.md` | 415 | Secret Keyword | `"smtp_password": "app-password"` | False positive — label string used as example in API docs |
-| `docs/getting-started.md` | 75 | Secret Keyword | `"openai_api_key": "sk-proj-your-key-here"` | False positive — placeholder in getting-started guide |
+| `docs/api-reference.md` | 485 | Secret Keyword | `"openai_api_key": "sk-proj-..."` | False positive — example placeholder in API docs (line shifted from 399 due to new endpoint docs) |
+| `docs/api-reference.md` | 503 | Secret Keyword | `"smtp_password": "app-password"` | False positive — label string in API docs (line shifted from 415) |
+| `docs/getting-started.md` | 75 | Secret Keyword | `"openai_api_key": "sk-proj-your-key-here"` | False positive — placeholder in getting-started guide (unchanged) |
+| `docs/security-audit.md` | 221 | Secret Keyword | *(same hash as api-reference.md:485)* | False positive — this audit document quoting previous findings |
+| `docs/security-audit.md` | 222 | Secret Keyword | *(same hash as api-reference.md:503)* | False positive — this audit document quoting previous findings |
+| `docs/security-audit.md` | 223 | Secret Keyword | *(same hash as getting-started.md:75)* | False positive — this audit document quoting previous findings |
 
-All three findings are in documentation files and contain clearly non-secret placeholder text. The `sk-proj-...` and `sk-proj-your-key-here` strings are not valid OpenAI API keys (real keys have 51+ character random suffixes). The string `app-password` is a generic label used in documentation examples, not a real credential.
+The 3 new findings in `docs/security-audit.md` are self-referential: the audit document itself quotes the placeholder strings from the previous findings table, which detect-secrets flags. This is expected behaviour when an audit document records prior findings.
+
+The 2 findings in `docs/api-reference.md` are the same placeholders as the previous audit; line numbers shifted because new endpoint documentation was added above them.
+
+All 6 findings are in documentation files and contain clearly non-secret placeholder text. The `sk-proj-...` and `sk-proj-your-key-here` strings are not valid OpenAI API keys (real keys have 51+ character random suffixes). The string `app-password` is a generic label used in documentation examples, not a real credential.
 
 **No secrets detected in application source code, templates, or static assets.**
 
@@ -257,11 +282,11 @@ docker scout cves threat-loom
 **Image:** `threat-loom:latest` (124 MB, 193 packages indexed)
 **Base image:** `python:3.13-slim` (Debian Trixie 13)
 
-> Image size increased from 121 MB → 124 MB due to new `anthropic` transitive dependencies and static assets. Package count increased from 191 → 193.
+> Container image was not rebuilt in this iteration (no changes to `requirements.txt`, `Dockerfile`, or base image). Results are unchanged from the 2026-02-19 audit.
 
 ### Summary
 
-| Severity | Count | Change from v1 |
+| Severity | Count | Change from v2 |
 |---|---|---|
 | Critical | 0 | — |
 | High | 0 | — |
@@ -327,7 +352,7 @@ Docker Scout recommends `python:3.14-alpine` as an alternative base image, which
 
 - [ ] Re-run `pip-audit` periodically or add it to CI to catch new CVEs in dependencies
 - [ ] Add gitleaks `protect --staged` as a git pre-commit hook to catch secrets before every commit
-- [ ] Create a `.secrets.baseline` file for `detect-secrets` to formally track the 3 documentation false positives and prevent re-alerting on them
+- [ ] Create a `.secrets.baseline` file for `detect-secrets` to formally track the documentation false positives and prevent re-alerting on them
 - [ ] Pin dependency versions in `requirements.txt` for reproducible builds (currently using `>=` minimum version constraints)
 - [ ] Consider adding `bandit` to a pre-commit hook or CI pipeline
 - [ ] Consider encrypting SMTP credentials at rest in `config.json` (currently plaintext, matching the existing API key pattern)

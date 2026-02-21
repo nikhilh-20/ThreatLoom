@@ -85,6 +85,20 @@ Fetch a single article with its full summary.
 
 ---
 
+### DELETE `/api/articles/<article_id>/summary`
+
+Remove the AI summary and embeddings for a single article. The article itself is preserved and can be re-summarized on the next pipeline run.
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+Returns 404 if the article has no summary.
+
+---
+
 ### GET `/api/articles/categorized`
 
 Get articles grouped by threat category.
@@ -141,16 +155,20 @@ List all configured feed sources.
 
 ### GET `/api/stats`
 
-Get overall database statistics.
+Get aggregate database statistics.
 
 **Response**
 
 ```json
 {
-  "total_articles": 350,
+  "total_articles": 730,
   "total_sources": 13,
-  "total_summaries": 310,
-  "articles_24h": 15
+  "total_summaries": 584,
+  "articles_last_24h": 12,
+  "unsummarized": 10,
+  "scrape_failed": 73,
+  "failed_summaries": 63,
+  "has_api_key": true
 }
 ```
 
@@ -197,32 +215,122 @@ If a refresh is already running:
 
 ### GET `/api/refresh-status`
 
-Poll whether a refresh is currently running.
+Poll the current pipeline state. Call every 3 seconds while a pipeline is running.
 
 **Response**
 
 ```json
 {
-  "is_refreshing": false
+  "is_refreshing": false,
+  "is_embedding": false,
+  "is_aborting": false,
+  "stage": "done",
+  "cost_estimate": null,
+  "actual_cost": null
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `is_refreshing` | boolean | True while any pipeline (refresh, ingest, embed) is running |
+| `is_embedding` | boolean | True when an embed-only job is running |
+| `is_aborting` | boolean | True after abort was requested but before the pipeline stops |
+| `stage` | string | Current stage: `fetch`, `scrape`, `confirm`, `summarize`, `embed`, `done`, `aborted`, `error` |
+| `cost_estimate` | object\|null | Present during `confirm` stage — `{article_count, estimated_cost, model}` |
+| `actual_cost` | object\|null | Present after summarization — `{article_count, actual_cost, model}` |
 
 ---
 
 ### POST `/api/clear-db`
 
-Delete all articles, summaries, embeddings, and insights. Source definitions are preserved.
+Delete articles, summaries, embeddings, and insights. Source definitions are preserved. Pass `days` to limit deletion to articles older than N days.
+
+**Request Body**
+
+```json
+{
+  "days": 0
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `days` | integer | `0` | `0` = delete everything; `N` = delete articles older than N days |
+
+**Response**
+
+```json
+{"status": "ok", "deleted": 45}
+```
+
+(For `days=0`, `deleted` is omitted.)
+
+!!! warning "Destructive Operation"
+    This permanently deletes all collected data. Source feed configurations are retained.
+
+---
+
+### POST `/api/abort`
+
+Abort the currently running pipeline. The pipeline stops between stages (after the current batch completes).
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+If no pipeline is running, returns the same response (no-op).
+
+---
+
+### POST `/api/embed`
+
+Generate embeddings for all summarized articles that don't have one yet. Runs as a background job (same lock as the full pipeline — returns `already_running` if a pipeline is active).
+
+**Response**
+
+```json
+{"status": "started"}
+```
+
+```json
+{"status": "already_running"}
+```
+
+---
+
+### POST `/api/ingest-urls`
+
+Scrape and summarize a list of specific article URLs without running a full feed fetch.
+
+**Request Body**
+
+```json
+{
+  "urls": [
+    "https://example.com/threat-report-1",
+    "https://example.com/threat-report-2"
+  ]
+}
+```
+
+URLs must use `http://` or `https://`. Invalid or duplicate URLs are skipped.
 
 **Response**
 
 ```json
 {
-  "status": "ok"
+  "status": "started",
+  "inserted": 2,
+  "skipped": 0
 }
 ```
 
-!!! warning "Destructive Operation"
-    This permanently deletes all collected data. Source feed configurations are retained.
+| Field | Description |
+|---|---|
+| `inserted` | Number of new URLs added to the database |
+| `skipped` | Number of URLs already in the database or with invalid schemes |
 
 ---
 
@@ -597,3 +705,43 @@ On failure:
   "error": "Connection refused"
 }
 ```
+
+---
+
+### POST `/api/report`
+
+Submit a report about an LLM-generated output. Sends an email via the configured SMTP server to the notification recipient.
+
+**Request Body**
+
+```json
+{
+  "type": "Article Summary",
+  "identifier": "New Ransomware Campaign Targets Healthcare",
+  "llm_content": "## Executive Summary\n...",
+  "metadata": {
+    "Article URL": "https://example.com/article",
+    "Source": "BleepingComputer",
+    "Reported": "2026-02-22T04:00:00Z"
+  },
+  "user_note": "This summary seems incorrect.",
+  "token": ""
+}
+```
+
+| Field | Description |
+|---|---|
+| `type` | Report category: `Article Summary`, `Trend Analysis`, `Forecast`, `Intelligence Response` |
+| `identifier` | Title or short description of the reported item |
+| `llm_content` | The exact LLM-generated text (auto-captured, not editable by the user) |
+| `metadata` | Key-value pairs included in the email body |
+| `user_note` | Optional note from the reporter |
+| `token` | Must match `report_token` in `config.json` if one is configured; omit or leave blank if no token is set |
+
+**Response**
+
+```json
+{"ok": true}
+```
+
+Returns 403 if a `report_token` is configured and the submitted token doesn't match. Returns 500 if SMTP is not configured or the send fails.

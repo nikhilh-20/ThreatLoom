@@ -33,24 +33,28 @@
             </nav>
             <div class="sidebar-stats" id="sidebar-stats">
                 <div class="stat-item">
-                    <span class="stat-value" id="stat-articles">--</span>
                     <span class="stat-label">Articles</span>
+                    <span class="stat-value" id="stat-articles">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-value" id="stat-sources">--</span>
                     <span class="stat-label">Sources</span>
+                    <span class="stat-value" id="stat-sources">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-value" id="stat-summaries">--</span>
                     <span class="stat-label">Summaries</span>
+                    <span class="stat-value" id="stat-summaries">--</span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="stat-unsummarized">--</span>
+                <div class="stat-item" id="stat-item-unsummarized" style="display:none">
                     <span class="stat-label">Unsummarized</span>
+                    <span class="stat-value" id="stat-unsummarized"></span>
                 </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="stat-scrape-failed">--</span>
-                    <span class="stat-label">Scrape Failed</span>
+                <div class="stat-item" id="stat-item-scrape-failed" style="display:none">
+                    <span class="stat-label">Scrape failed</span>
+                    <span class="stat-value" id="stat-scrape-failed"></span>
+                </div>
+                <div class="stat-item" id="stat-item-failed-summaries" style="display:none">
+                    <span class="stat-label">Summary failed</span>
+                    <span class="stat-value" id="stat-failed-summaries"></span>
                 </div>
             </div>
         </aside>
@@ -70,6 +74,15 @@
                         </button>
                         <button class="btn btn-primary refresh-since-btn" onclick="refreshSinceLastRetrieval()">
                             <span class="btn-icon">&#8635;</span> Since Last Retrieval
+                        </button>
+                        <button class="btn btn-primary" id="embed-btn" onclick="triggerEmbed()" title="Generate embeddings for all summarized articles that don't have one yet">
+                            <span class="btn-icon">&#9670;</span> Generate Embeddings
+                        </button>
+                        <button class="btn btn-primary" id="ingest-btn" onclick="showIngestDialog()" title="Process specific article URLs">
+                            <span class="btn-icon">&#8659;</span> Ingest URLs
+                        </button>
+                        <button class="btn btn-danger" id="abort-btn" onclick="abortPipeline()" title="Stop the running pipeline between stages" style="display:none">
+                            &#9632; Abort
                         </button>
                     </div>
                 </div>
@@ -134,6 +147,20 @@
             <p class="modal-body" id="actual-cost-body"></p>
             <div class="modal-actions">
                 <button class="btn btn-primary" onclick="dismissActualCost()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ingest URLs Modal -->
+    <div class="modal-overlay" id="ingest-modal" style="display:none">
+        <div class="modal-dialog">
+            <h3 class="modal-title">Process Article URLs</h3>
+            <p class="modal-body">Enter one URL per line. Articles will be scraped and summarized using your configured LLM.</p>
+            <textarea id="ingest-urls-input" class="form-input" rows="8" style="width:100%;box-sizing:border-box;margin:8px 0 4px;font-size:0.85rem;" placeholder="https://example.com/article-1&#10;https://example.com/article-2"></textarea>
+            <span class="save-status" id="ingest-urls-status" style="display:block;min-height:1.2em;margin-bottom:8px;"></span>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="ingest-submit-btn" onclick="ingestUrls()">Process</button>
+                <button class="btn btn-secondary" onclick="hideIngestDialog()">Cancel</button>
             </div>
         </div>
     </div>

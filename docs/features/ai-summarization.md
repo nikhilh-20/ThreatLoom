@@ -1,6 +1,6 @@
 # AI Summarization
 
-Every ingested article is processed by OpenAI to produce a structured intelligence summary. Summaries include an executive overview, novelty assessment, technical details, defensive mitigations, tags, and an attack flow sequence.
+Every ingested article is processed by the configured LLM provider (OpenAI or Anthropic) to produce a structured intelligence summary. Summaries include an executive overview, novelty assessment, technical details, defensive mitigations, tags, and an attack flow sequence.
 
 ## Summary Structure
 
@@ -108,13 +108,14 @@ The `summarize_pending()` function processes up to 10 unsummarized articles per 
 
 ### Retry Logic
 
-- Up to **3 retries** on rate limit or API errors
-- Exponential backoff: 4s, 8s, 16s between retries
-- Failed articles are marked with `model_used="failed"` and skipped on subsequent runs
+- Up to **3 retries** on rate limit or transient API errors
+- **OpenAI:** Exponential backoff: 4 s, 8 s, 16 s between retries
+- **Anthropic:** Exponential backoff starting at 10 s, doubling to a maximum of 120 s; honours the `Retry-After` response header when provided by the API
+- Failed articles are marked with `model_used="failed"` and skipped on subsequent runs; failed count is shown in the sidebar statistics
 
 ### Model Configuration
 
-The summarizer uses whichever model is set in `config.json` under `openai_model`. Token limits:
+The summarizer uses whichever model is set in `config.json` under `openai_model` (OpenAI provider) or `anthropic_model` (Anthropic provider). Token limits:
 
 | Operation | Max Tokens | Temperature |
 |---|---|---|

@@ -146,30 +146,28 @@ a:hover {
 }
 
 .sidebar-stats {
-    padding: 16px;
+    padding: 12px 16px;
     border-top: 1px solid var(--border-color);
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .stat-item {
-    flex: 1;
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .stat-value {
-    display: block;
-    font-size: 1.1rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--accent-cyan);
 }
 
 .stat-label {
-    font-size: 0.7rem;
+    font-size: 0.82rem;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 /* === Main Content === */
