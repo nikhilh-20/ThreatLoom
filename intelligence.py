@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import re
 import time
 
@@ -63,6 +64,40 @@ MAX_CONTEXT_CHARS = 30000
 MAX_CONVERSATION_MESSAGES = 6
 
 
+def _extract_since_days(query):
+    """Extract a lookback window (in days) from natural-language time references.
+
+    Recognises patterns like "last 24 hours", "past 3 days", "yesterday",
+    "last week", "last month". Returns None if no time reference is found.
+
+    Args:
+        query: The user's natural-language question.
+
+    Returns:
+        int or None: Number of days to look back, or None if not detected.
+    """
+    q = query.lower()
+    # "last N hours" / "past N hours" / "N hours ago"
+    m = re.search(r'(?:last|past)\s+(\d+)\s+hours?', q) or re.search(r'(\d+)\s+hours?\s+ago', q)
+    if m:
+        return max(1, math.ceil(int(m.group(1)) / 24))
+    # "last N days" / "past N days"
+    m = re.search(r'(?:last|past)\s+(\d+)\s+days?', q)
+    if m:
+        return int(m.group(1))
+    # "24 hours" without a qualifier (e.g. "in the last 24 hours" already caught above)
+    m = re.search(r'\b(\d+)\s+hours?\b', q)
+    if m:
+        return max(1, math.ceil(int(m.group(1)) / 24))
+    if 'yesterday' in q:
+        return 1
+    if 'last week' in q or 'past week' in q or 'this week' in q:
+        return 7
+    if 'last month' in q or 'past month' in q or 'this month' in q:
+        return 30
+    return None
+
+
 def _build_context(articles):
     """Build a context string from retrieved articles for LLM input.
 
@@ -105,7 +140,7 @@ def _build_context(articles):
     return f"Retrieved {len(parts)} relevant articles:\n\n" + "\n".join(parts)
 
 
-def chat(messages, top_k=15):
+def chat(messages, top_k=15, since_days=None):
     """RAG-based chat: retrieve relevant articles, then generate a response.
 
     Extracts the latest user message, performs semantic search to find
@@ -117,6 +152,10 @@ def chat(messages, top_k=15):
         messages: List of conversation message dicts, each with
             ``role`` (``"user"`` or ``"assistant"``) and ``content``.
         top_k: Number of articles to retrieve for context.
+        since_days: Restrict retrieval to articles published within this
+            many days. If None, the value is auto-detected from the
+            user's query (e.g. "last 24 hours" → 1 day). Pass 0 to
+            explicitly search all articles.
 
     Returns:
         A dict with keys:
@@ -124,6 +163,7 @@ def chat(messages, top_k=15):
             - ``articles``: List of retrieved article dicts.
             - ``model_used``: The OpenAI model name used.
             - ``error``: Error string or None on success.
+            - ``since_days``: The time window applied (int or None).
     """
     if not has_api_key():
         return {
@@ -131,6 +171,7 @@ def chat(messages, top_k=15):
             "articles": [],
             "model_used": None,
             "error": "no_api_key",
+            "since_days": None,
         }
 
     model = get_model_name()
@@ -143,12 +184,18 @@ def chat(messages, top_k=15):
             "articles": [],
             "model_used": model,
             "error": None,
+            "since_days": None,
         }
 
     query = user_messages[-1]["content"]
 
-    # Semantic search for relevant articles
-    articles = semantic_search(query, top_k=top_k)
+    # Auto-detect time references if since_days not explicitly set; 0 means "all"
+    effective_since = since_days if since_days is not None else _extract_since_days(query)
+    if effective_since == 0:
+        effective_since = None
+
+    # Semantic search for relevant articles (optionally time-filtered)
+    articles = semantic_search(query, top_k=top_k, since_days=effective_since)
 
     # Build context from retrieved articles
     context = _build_context(articles)
@@ -173,6 +220,7 @@ def chat(messages, top_k=15):
                 "articles": articles,
                 "model_used": model,
                 "error": None,
+                "since_days": effective_since,
             }
         except Exception as e:
             is_rate = "429" in str(e) or "rate limit" in str(e).lower() or type(e).__name__ == "RateLimitError"
@@ -190,6 +238,7 @@ def chat(messages, top_k=15):
                     "articles": articles,
                     "model_used": model,
                     "error": str(e),
+                    "since_days": effective_since,
                 }
 
     return {
@@ -197,4 +246,5 @@ def chat(messages, top_k=15):
         "articles": articles,
         "model_used": model,
         "error": "Failed after 3 retries",
+        "since_days": effective_since,
     }

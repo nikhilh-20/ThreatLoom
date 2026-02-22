@@ -798,7 +798,14 @@ def api_intelligence_chat():
     messages = data.get("messages", [])
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
-    result = intelligence_chat(messages)
+    # Optional: explicit time window override (0 = search all, omit = auto-detect from query)
+    since_days = data.get("since_days")
+    if since_days is not None:
+        try:
+            since_days = int(since_days)
+        except (ValueError, TypeError):
+            since_days = None
+    result = intelligence_chat(messages, since_days=since_days)
     return jsonify(result)
 
 

@@ -490,11 +490,17 @@ RAG-based question answering over collected threat intelligence.
 {
   "messages": [
     {"role": "user", "content": "What ransomware groups have been most active recently?"}
-  ]
+  ],
+  "since_days": 7
 }
 ```
 
-The `messages` array follows the OpenAI chat format. Include previous messages for multi-turn conversations (last 6 are used).
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `messages` | array | required | Conversation messages in OpenAI chat format. Include previous messages for multi-turn conversations (last 6 are used). |
+| `since_days` | integer | auto-detect | Restrict article retrieval to this many days. Omit to auto-detect from the query (e.g. "last 24 hours" → 1 day). Pass `0` to search all articles regardless of time phrases in the query. |
+
+Time references are detected automatically from natural language: `last N hours`, `past N days`, `yesterday`, `last week`, `last month`. See the [Intelligence Search](features/intelligence-search.md#time-period-filtering) feature doc for the full list.
 
 **Response**
 
@@ -512,9 +518,12 @@ The `messages` array follows the OpenAI chat format. Include previous messages f
     }
   ],
   "model_used": "gpt-4o-mini",
+  "since_days": 7,
   "error": null
 }
 ```
+
+The `since_days` field in the response echoes back the effective time window that was applied (`null` if all articles were searched).
 
 **Error States**
 

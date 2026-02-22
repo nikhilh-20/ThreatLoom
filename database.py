@@ -565,6 +565,42 @@ def get_embedding_stats():
     }
 
 
+def get_article_ids_since_days(since_days, model_used=None):
+    """Return the set of article IDs that have embeddings and were published within ``since_days`` days.
+
+    Uses ``published_date`` when available, falling back to ``fetched_date``.
+
+    Args:
+        since_days: Number of days to look back from now.
+        model_used: If provided, restrict to embeddings from this model.
+
+    Returns:
+        A set of integer article IDs.
+    """
+    conn = get_connection()
+    cutoff = f"-{int(since_days)} days"
+    if model_used:
+        rows = conn.execute(
+            """
+            SELECT ae.article_id FROM article_embeddings ae
+            JOIN articles a ON a.id = ae.article_id
+            WHERE ae.model_used = ?
+              AND date(COALESCE(a.published_date, a.fetched_date)) >= date('now', ?)
+            """,
+            (model_used, cutoff),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT ae.article_id FROM article_embeddings ae
+            JOIN articles a ON a.id = ae.article_id
+            WHERE date(COALESCE(a.published_date, a.fetched_date)) >= date('now', ?)
+            """,
+            (cutoff,),
+        ).fetchall()
+    return {row["article_id"] for row in rows}
+
+
 def get_articles_by_ids(article_ids):
     """Fetch full article and summary data for a list of IDs.
 

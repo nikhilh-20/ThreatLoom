@@ -8,6 +8,7 @@ from openai import APIError, RateLimitError
 from config import load_config
 from database import (
     get_all_embeddings,
+    get_article_ids_since_days,
     get_articles_by_ids,
     get_unembedded_articles,
     save_embedding,
@@ -137,7 +138,7 @@ def embed_pending_articles(limit=50):
     return len(articles)
 
 
-def semantic_search(query, top_k=15):
+def semantic_search(query, top_k=15, since_days=None):
     """Perform semantic search over stored article embeddings.
 
     Embeds the query string, computes cosine similarity against all
@@ -147,6 +148,8 @@ def semantic_search(query, top_k=15):
     Args:
         query: The natural-language search query.
         top_k: Number of top results to return.
+        since_days: If set, restrict search to articles published within
+            this many days. None means search all articles.
 
     Returns:
         List of article dicts, each augmented with a ``relevance_score``
@@ -168,10 +171,16 @@ def semantic_search(query, top_k=15):
         logger.error(f"Failed to embed query: {e}")
         return []
 
-    # Load all stored embeddings
+    # Load all stored embeddings, optionally filtered by time period
     all_embs = get_all_embeddings(model_used=EMBEDDING_MODEL)
     if not all_embs:
         return []
+
+    if since_days is not None:
+        allowed_ids = get_article_ids_since_days(since_days, model_used=EMBEDDING_MODEL)
+        all_embs = [e for e in all_embs if e["article_id"] in allowed_ids]
+        if not all_embs:
+            return []
 
     # Build matrix for vectorized cosine similarity
     article_ids = []
