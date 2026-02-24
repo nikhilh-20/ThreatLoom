@@ -19,13 +19,30 @@
 
         <h1 class="article-title">{{ article.title }}</h1>
 
-        {% if article.tags %}
-        <div class="tag-list">
+        <div class="tag-list" id="tag-view">
             {% for tag in article.tags %}
             <span class="tag-pill">{{ tag }}</span>
             {% endfor %}
+            <button class="btn-edit-tags" onclick="openTagEditor()" title="Edit tags/categories">&#9998; Edit</button>
         </div>
-        {% endif %}
+
+        <div id="tag-editor" style="display:none">
+            <div class="tag-editor-pills" id="tag-editor-pills">
+                <!-- populated by JS -->
+            </div>
+            <div class="tag-search-wrap">
+                <input type="text" id="tag-search-input" placeholder="Search categories and entities..." autocomplete="off">
+                <ul id="tag-search-results" class="tag-search-dropdown"></ul>
+            </div>
+            <div class="tag-computed-preview" id="tag-computed-preview">
+                <!-- live category preview -->
+            </div>
+            <div class="tag-editor-actions">
+                <button class="btn btn-sm" onclick="cancelTagEdits()">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveTagEdits()">Save Changes</button>
+                <span class="save-status" id="tag-save-status"></span>
+            </div>
+        </div>
 
         {% if article.summary_text %}
         <section class="article-section">
@@ -127,6 +144,11 @@
 
 {% block scripts %}
 <script>
+    const ARTICLE_ID = {{ article.id }};
+    let currentTags = {{ article.tags | tojson }};
+    let editTags = [];
+    let availableTags = null; // loaded lazily
+
     document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById('summary-markdown');
         if (el && typeof marked !== 'undefined') {
@@ -137,7 +159,266 @@
         if (document.getElementById('attack-flow')) {
             initAttackFlow();
         }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('tag-search-input');
+            const results = document.getElementById('tag-search-results');
+            if (results && wrap && !wrap.contains(e.target) && !results.contains(e.target)) {
+                results.style.display = 'none';
+            }
+        });
     });
+
+    // ── Tag editor ─────────────────────────────────────────────────────────────
+
+    function openTagEditor() {
+        editTags = [...currentTags];
+        renderEditorPills();
+        document.getElementById('tag-view').style.display = 'none';
+        document.getElementById('tag-editor').style.display = 'block';
+        document.getElementById('tag-save-status').textContent = '';
+        loadAvailableTags();
+        updateCategoryPreview();
+    }
+
+    function cancelTagEdits() {
+        editTags = [...currentTags];
+        document.getElementById('tag-editor').style.display = 'none';
+        document.getElementById('tag-view').style.display = '';
+    }
+
+    async function loadAvailableTags() {
+        if (availableTags) {
+            bindSearchInput();
+            return;
+        }
+        try {
+            const res = await fetch('/api/available-tags');
+            availableTags = await res.json();
+            bindSearchInput();
+        } catch (e) {
+            console.error('Failed to load available tags', e);
+        }
+    }
+
+    function bindSearchInput() {
+        const input = document.getElementById('tag-search-input');
+        if (!input) return;
+        input.removeEventListener('input', onSearchInput);
+        input.addEventListener('input', onSearchInput);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const dropdown = document.getElementById('tag-search-results');
+                const highlighted = dropdown ? dropdown.querySelector('.highlighted') : null;
+                if (highlighted) {
+                    highlighted.click();
+                } else {
+                    const val = input.value.trim().toLowerCase();
+                    if (val) addTag(val);
+                }
+            }
+        });
+    }
+
+    function onSearchInput() {
+        const input = document.getElementById('tag-search-input');
+        const query = input.value.trim().toLowerCase();
+        const dropdown = document.getElementById('tag-search-results');
+
+        if (!query || !availableTags) {
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+            return;
+        }
+
+        const results = [];
+
+        // Search categories
+        for (const cat of availableTags.categories) {
+            if (cat.tag.includes(query) || cat.label.toLowerCase().includes(query)) {
+                results.push({ tag: cat.tag, label: cat.label, kind: 'category' });
+            }
+        }
+
+        // Search entities
+        for (const ent of availableTags.entities) {
+            if (ent.tag.includes(query) || ent.label.toLowerCase().includes(query)) {
+                results.push({ tag: ent.tag, label: ent.label, kind: ent.category, category: ent.category });
+            }
+        }
+
+        dropdown.innerHTML = '';
+
+        const exactMatch = results.some(r => r.tag === query);
+
+        results.slice(0, 20).forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'tag-search-item';
+            li.innerHTML = `<strong>${escapeHtml(item.label)}</strong> <span class="tag-kind">${escapeHtml(item.kind)}</span>`;
+            li.addEventListener('click', () => {
+                addTag(item.tag);
+                input.value = '';
+                dropdown.style.display = 'none';
+            });
+            li.addEventListener('mouseenter', () => {
+                dropdown.querySelectorAll('.highlighted').forEach(el => el.classList.remove('highlighted'));
+                li.classList.add('highlighted');
+            });
+            dropdown.appendChild(li);
+        });
+
+        if (!exactMatch) {
+            if (results.length > 0) {
+                const divider = document.createElement('li');
+                divider.className = 'tag-search-divider';
+                dropdown.appendChild(divider);
+            }
+            const li = document.createElement('li');
+            li.className = 'tag-search-item tag-search-custom';
+            li.innerHTML = `<em>＋ Add new tag: "${escapeHtml(query)}"</em> <span class="tag-kind">custom — no category mapping</span>`;
+            li.addEventListener('click', () => {
+                addTag(query);
+                input.value = '';
+                dropdown.style.display = 'none';
+            });
+            dropdown.appendChild(li);
+        }
+
+        dropdown.style.display = dropdown.children.length > 0 ? 'block' : 'none';
+    }
+
+    function renderEditorPills() {
+        const container = document.getElementById('tag-editor-pills');
+        container.innerHTML = '';
+        if (editTags.length === 0) {
+            container.innerHTML = '<span class="tag-empty-hint">No tags — add some below</span>';
+            return;
+        }
+        editTags.forEach(tag => {
+            const pill = document.createElement('span');
+            pill.className = 'tag-pill tag-pill-editable';
+            pill.innerHTML = `${escapeHtml(tag)} <button class="tag-remove" onclick="removeTag('${escapeHtml(tag)}')" title="Remove">&times;</button>`;
+            container.appendChild(pill);
+        });
+    }
+
+    function removeTag(tag) {
+        editTags = editTags.filter(t => t !== tag);
+        renderEditorPills();
+        updateCategoryPreview();
+    }
+
+    function addTag(tag) {
+        tag = tag.trim().toLowerCase();
+        if (!tag || editTags.includes(tag)) return;
+        editTags.push(tag);
+        renderEditorPills();
+        updateCategoryPreview();
+    }
+
+    function updateCategoryPreview() {
+        const container = document.getElementById('tag-computed-preview');
+        if (!availableTags || editTags.length === 0) {
+            container.innerHTML = '<span class="preview-empty">No categories mapped yet</span>';
+            return;
+        }
+
+        const catMap = {};
+        const categoryOrder = availableTags.categories.map(c => c.label);
+
+        for (const tag of editTags) {
+            // Direct category tag match
+            const catEntry = availableTags.categories.find(c => c.tag === tag);
+            if (catEntry) {
+                if (!catMap[catEntry.label]) catMap[catEntry.label] = [];
+                continue; // category tag itself, no sub-label needed
+            }
+            // Entity match
+            const entEntry = availableTags.entities.find(e => e.tag === tag);
+            if (entEntry) {
+                if (!catMap[entEntry.category]) catMap[entEntry.category] = [];
+                catMap[entEntry.category].push(entEntry.label);
+            }
+        }
+
+        // Also mark categories that have a direct category-tag match
+        for (const tag of editTags) {
+            const catEntry = availableTags.categories.find(c => c.tag === tag);
+            if (catEntry && !catMap[catEntry.label]) {
+                catMap[catEntry.label] = [];
+            }
+        }
+
+        const keys = Object.keys(catMap);
+        if (keys.length === 0) {
+            container.innerHTML = '<span class="preview-empty">No categories mapped (custom tags only)</span>';
+            return;
+        }
+
+        // Render in canonical category order
+        const badges = categoryOrder
+            .filter(cat => catMap[cat] !== undefined)
+            .map(cat => {
+                const entities = catMap[cat];
+                const detail = entities.length > 0 ? ` (${entities.slice(0, 3).join(', ')}${entities.length > 3 ? '…' : ''})` : '';
+                return `<span class="category-badge">${escapeHtml(cat)}${escapeHtml(detail)}</span>`;
+            });
+
+        container.innerHTML = '<span class="preview-label">Will appear in:</span> ' + badges.join(' ');
+    }
+
+    async function saveTagEdits() {
+        const status = document.getElementById('tag-save-status');
+        status.textContent = 'Saving…';
+        status.className = 'save-status';
+
+        try {
+            const res = await fetch(`/api/articles/${ARTICLE_ID}/tags`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tags: editTags }),
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                currentTags = data.tags;
+                // Re-render the static tag-view
+                const tagView = document.getElementById('tag-view');
+                tagView.innerHTML = '';
+                currentTags.forEach(tag => {
+                    const pill = document.createElement('span');
+                    pill.className = 'tag-pill';
+                    pill.textContent = tag;
+                    tagView.appendChild(pill);
+                });
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-edit-tags';
+                editBtn.title = 'Edit tags/categories';
+                editBtn.innerHTML = '&#9998; Edit';
+                editBtn.onclick = openTagEditor;
+                tagView.appendChild(editBtn);
+
+                document.getElementById('tag-editor').style.display = 'none';
+                tagView.style.display = '';
+                status.textContent = '';
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (e) {
+            status.textContent = 'Failed: ' + e.message;
+            status.className = 'save-status error';
+        }
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     let currentPhase = 0;
     let totalPhases = 0;

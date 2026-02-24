@@ -18,6 +18,7 @@ from database import (
     get_article,
     get_articles,
     get_articles_for_category,
+    get_available_tags,
     get_categorized_articles,
     get_category_insight,
     get_embedding_stats,
@@ -28,6 +29,7 @@ from database import (
     init_db,
     insert_article,
     save_category_insight,
+    update_article_tags,
     upsert_source,
 )
 from scheduler import (
@@ -304,6 +306,41 @@ def api_delete_article_summary(article_id):
     try:
         delete_article_summary(article_id)
         return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/api/available-tags")
+def api_available_tags():
+    """Return the predefined tag list for the article tag editor.
+
+    Returns:
+        JSON with ``categories`` and ``entities`` lists.
+    """
+    return jsonify(get_available_tags())
+
+
+@app.route("/api/articles/<int:article_id>/tags", methods=["PATCH"])
+def api_update_article_tags(article_id):
+    """Update the tags for a single article.
+
+    Args:
+        article_id: The article's integer ID from the URL path.
+
+    Returns:
+        JSON with ``status`` and updated ``tags`` on success, or
+        ``status``/``error`` on failure.
+    """
+    data = request.get_json(silent=True) or {}
+    tags = data.get("tags")
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        return jsonify({"status": "error", "error": "tags must be a list of strings"}), 400
+    tags = [t.strip().lower() for t in tags if t.strip()]
+    try:
+        update_article_tags(article_id, tags)
+        return jsonify({"status": "ok", "tags": tags})
+    except ValueError as e:
+        return jsonify({"status": "error", "error": str(e)}), 404
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 

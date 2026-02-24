@@ -1279,6 +1279,88 @@ def delete_article_summary(article_id):
     conn.commit()
 
 
+def update_article_tags(article_id, tags):
+    """Update (or create) the tags for an article.
+
+    If the article already has a ``summaries`` row the tags column is
+    updated in place.  If no summary row exists yet, a minimal row is
+    inserted so the tags are still persisted.
+
+    Args:
+        article_id: The article's integer ID.
+        tags: A list of lowercase tag strings.
+
+    Raises:
+        ValueError: If the article does not exist in the ``articles`` table.
+    """
+    conn = get_connection()
+    exists = conn.execute(
+        "SELECT 1 FROM articles WHERE id = ?", (article_id,)
+    ).fetchone()
+    if not exists:
+        raise ValueError(f"Article {article_id} not found")
+    tags_json = _json.dumps(tags)
+    has_summary = conn.execute(
+        "SELECT 1 FROM summaries WHERE article_id = ?", (article_id,)
+    ).fetchone()
+    if has_summary:
+        conn.execute(
+            "UPDATE summaries SET tags = ? WHERE article_id = ?",
+            (tags_json, article_id),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO summaries (article_id, summary_text, tags)
+               VALUES (?, '', ?)
+               ON CONFLICT(article_id) DO UPDATE SET tags = excluded.tags""",
+            (article_id, tags_json),
+        )
+    conn.commit()
+
+
+def get_available_tags():
+    """Return the full predefined tag list for the article tag editor.
+
+    Returns a dict with two keys:
+
+    * ``categories`` – the 9 broad-category tags, each with ``tag`` and
+      ``label`` fields.
+    * ``entities`` – every known MITRE entity (threat actors + software),
+      deduplicated by tag key, each with ``tag``, ``label``, and
+      ``category`` fields.
+
+    Returns:
+        dict with ``categories`` and ``entities`` lists.
+    """
+    categories = [
+        {"tag": "malware", "label": "Malware"},
+        {"tag": "vulnerability", "label": "Vulnerabilities"},
+        {"tag": "threat-actor", "label": "Threat Actors"},
+        {"tag": "data-breach", "label": "Data Leaks"},
+        {"tag": "phishing", "label": "Phishing & Social Engineering"},
+        {"tag": "supply-chain", "label": "Supply Chain"},
+        {"tag": "botnet", "label": "Botnet & DDoS"},
+        {"tag": "c2", "label": "C2 & Offensive Tooling"},
+        {"tag": "iot", "label": "IoT & Hardware"},
+    ]
+
+    seen = set()
+    entities = []
+
+    def _add_entities(mapping, category):
+        for tag_key, display_name in sorted(mapping.items()):
+            if tag_key in seen:
+                continue
+            seen.add(tag_key)
+            entities.append({"tag": tag_key, "label": display_name, "category": category})
+
+    _add_entities(_KNOWN_ENTITIES.get("Threat Actors", {}), "Threat Actors")
+    _add_entities(_KNOWN_ENTITIES.get("Malware", {}), "Malware")
+    _add_entities(_KNOWN_ENTITIES.get("C2 & Offensive Tooling", {}), "C2 & Offensive Tooling")
+
+    return {"categories": categories, "entities": entities}
+
+
 def get_trend_analyses(category_name):
     """Return all trend analysis rows for a category, ordered by period.
 
