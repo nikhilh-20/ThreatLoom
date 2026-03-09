@@ -168,9 +168,16 @@ Get aggregate database statistics.
   "unsummarized": 10,
   "scrape_failed": 73,
   "failed_summaries": 63,
-  "has_api_key": true
+  "has_api_key": true,
+  "email_mode": "per_article",
+  "digest_period": "day"
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `email_mode` | string | Email delivery mode: `"per_article"` or `"digest"` (if notifications enabled) |
+| `digest_period` | string | Digest frequency: `"day"` or `"week"` (if email_mode is digest) |
 
 ---
 
@@ -224,6 +231,7 @@ Poll the current pipeline state. Call every 3 seconds while a pipeline is runnin
   "is_refreshing": false,
   "is_embedding": false,
   "is_aborting": false,
+  "is_digesting": false,
   "stage": "done",
   "cost_estimate": null,
   "actual_cost": null
@@ -235,9 +243,35 @@ Poll the current pipeline state. Call every 3 seconds while a pipeline is runnin
 | `is_refreshing` | boolean | True while any pipeline (refresh, ingest, embed) is running |
 | `is_embedding` | boolean | True when an embed-only job is running |
 | `is_aborting` | boolean | True after abort was requested but before the pipeline stops |
+| `is_digesting` | boolean | True while a digest email job is running |
 | `stage` | string | Current stage: `fetch`, `scrape`, `confirm`, `summarize`, `embed`, `done`, `aborted`, `error` |
 | `cost_estimate` | object\|null | Present during `confirm` stage — `{article_count, estimated_cost, model}` |
 | `actual_cost` | object\|null | Present after summarization — `{article_count, actual_cost, model}` |
+
+---
+
+### POST `/api/send-digest`
+
+Trigger the digest email job immediately, bypassing the scheduled time. Collects all articles since the last digest and sends a summary email.
+
+**Response**
+
+```json
+{
+  "status": "started"
+}
+```
+
+If a pipeline or digest is already running:
+
+```json
+{
+  "status": "error",
+  "error": "Pipeline busy or digest already running"
+}
+```
+
+Returns 409 (Conflict) if busy.
 
 ---
 
@@ -613,6 +647,8 @@ Save configuration settings.
     }
   ],
   "email_notifications_enabled": true,
+  "email_mode": "digest",
+  "digest_period": "day",
   "notification_email": "you@example.com",
   "smtp_host": "smtp.gmail.com",
   "smtp_port": 587,
@@ -621,6 +657,11 @@ Save configuration settings.
   "smtp_use_tls": true
 }
 ```
+
+| Field | Type | Description |
+|---|---|---|
+| `email_mode` | string | `"per_article"` for immediate alerts, `"digest"` for aggregated summaries |
+| `digest_period` | string | `"day"` or `"week"` (used when `email_mode="digest"`; ignored otherwise) |
 
 All Anthropic and email fields are optional. Omitted fields retain their current saved values. Feed URLs must use `http://` or `https://` — entries with other schemes are silently dropped.
 

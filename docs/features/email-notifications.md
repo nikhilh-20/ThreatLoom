@@ -1,14 +1,19 @@
 # Email Notifications
 
-Threat Loom can send an email alert for every newly summarized article. Each email contains the full structured analysis: executive summary, novelty assessment, technical details, and mitigations.
+Threat Loom supports two email delivery modes:
+
+- **Per-Article** — An email for every newly summarized article with full structured analysis
+- **Digest** — Aggregated daily or weekly summaries of all collected articles in the period
 
 ## Setup
 
 1. Go to **Settings** in the web UI
 2. Enable **Email Notifications**
 3. Fill in your SMTP server details and recipient address
-4. Click **Send Test Email** to verify
-5. Click **Save Settings**
+4. Choose your delivery mode: **Per-Article** or **Digest**
+5. If using Digest mode, select frequency: **Daily** or **Weekly**
+6. Click **Send Test Email** to verify
+7. Click **Save Settings**
 
 ## SMTP Configuration
 
@@ -55,6 +60,32 @@ Threat Loom can send an email alert for every newly summarized article. Each ema
 | Username | `apikey` |
 | Password | Your SendGrid API key |
 | TLS | Enabled |
+
+## Delivery Modes
+
+### Per-Article Mode
+
+Each notification email is sent immediately after an article is summarized. This mode provides real-time alerts for new threats and developments.
+
+**Best for:** Staying on top of breaking threats and immediate incident response.
+
+### Digest Mode
+
+Articles are collected over a configured period (daily or weekly) and sent as a single summary email. The digest includes:
+
+- Count of new articles in the period
+- Threat category breakdown
+- Summary of key threats, actors, and vulnerabilities discussed
+- Links to all original articles for deeper investigation
+
+**Frequency Options:**
+
+| Frequency | Delivery | Best For |
+|---|---|---|
+| Daily | Every day at 5:30 PM IST (12:00 UTC) | Regular briefing, avoiding email overload |
+| Weekly | Every Friday at 5:30 PM IST (12:00 UTC) | Executive summary, weekly planning |
+
+**Manual Trigger:** You can also send the current digest immediately from the **Settings** page using the **Send Digest Now** button, without waiting for the scheduled time.
 
 ## Email Content
 

@@ -97,7 +97,9 @@ To get a key:
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `email_notifications_enabled` | boolean | `false` | Enable per-article email alerts. |
+| `email_notifications_enabled` | boolean | `false` | Enable email alerts (per-article or digest). |
+| `email_mode` | string | `"per_article"` | Delivery mode: `"per_article"` (immediate) or `"digest"` (aggregated). |
+| `digest_period` | string | `"day"` | Digest frequency when `email_mode="digest"`: `"day"` or `"week"`. Runs at 5:30 PM IST. |
 | `notification_email` | string | `""` | Recipient email address. |
 | `smtp_host` | string | `""` | SMTP server hostname (e.g. `smtp.gmail.com`). |
 | `smtp_port` | integer | `587` | SMTP server port. |
