@@ -43,6 +43,12 @@ async function loadStats() {
         setConditional('stat-item-unsummarized', 'stat-unsummarized', data.unsummarized ?? 0);
         setConditional('stat-item-scrape-failed', 'stat-scrape-failed', data.scrape_failed ?? 0);
         setConditional('stat-item-failed-summaries', 'stat-failed-summaries', data.failed_summaries ?? 0);
+
+        // Show/hide "Send Digest Now" button based on email mode
+        const digestBtn = el('digest-btn');
+        if (digestBtn) {
+            digestBtn.style.display = data.email_mode === 'digest' ? '' : 'none';
+        }
     } catch (e) {
         console.error('Failed to load stats:', e);
     }
@@ -1168,6 +1174,8 @@ function saveSettings() {
         fetch_interval_minutes: interval ? parseInt(interval.value) : 30,
         feeds: feeds,
         email_notifications_enabled: emailEnabled ? emailEnabled.checked : false,
+        email_mode: (document.querySelector('input[name="email-mode"]:checked') || {}).value || 'per_article',
+        digest_period: (document.querySelector('input[name="digest-period"]:checked') || {}).value || 'day',
         notification_email: notificationEmail ? notificationEmail.value : '',
         smtp_host: smtpHost ? smtpHost.value : '',
         smtp_port: smtpPort ? parseInt(smtpPort.value) || 587 : 587,
@@ -1533,6 +1541,45 @@ async function testMalpediaKey() {
             status.textContent = 'Test failed: ' + e.message;
             status.className = 'form-hint error';
         }
+    }
+}
+
+function toggleEmailMode() {
+    const enabled = document.getElementById('email-enabled');
+    const section = document.getElementById('email-mode-section');
+    if (section) {
+        section.style.display = (enabled && enabled.checked) ? '' : 'none';
+    }
+    toggleDigestPeriod();
+}
+
+function toggleDigestPeriod() {
+    const digestSelected = document.getElementById('email-mode-digest');
+    const periodSection = document.getElementById('digest-period-section');
+    if (periodSection) {
+        periodSection.style.display = (digestSelected && digestSelected.checked) ? '' : 'none';
+    }
+}
+
+async function sendDigestNow() {
+    const btn = document.getElementById('digest-btn');
+    const statusEl = document.getElementById('refresh-status');
+    if (btn) { btn.disabled = true; }
+    if (statusEl) { statusEl.textContent = 'Sending digest...'; statusEl.className = 'refresh-status active'; }
+
+    try {
+        const res = await fetch('/api/send-digest', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.status === 'started') {
+            if (statusEl) { statusEl.textContent = 'Digest email queued!'; statusEl.className = 'refresh-status success'; }
+            setTimeout(() => { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'refresh-status'; } }, 5000);
+        } else {
+            if (statusEl) { statusEl.textContent = 'Error: ' + (data.error || 'unknown'); statusEl.className = 'refresh-status error'; }
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = 'Error: ' + e.message; statusEl.className = 'refresh-status error'; }
+    } finally {
+        if (btn) { btn.disabled = false; }
     }
 }
 

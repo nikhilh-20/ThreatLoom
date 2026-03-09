@@ -138,6 +138,63 @@ def embed_pending_articles(limit=50):
     return len(articles)
 
 
+def cluster_articles_by_similarity(articles, threshold=0.82):
+    """Group articles into story clusters using greedy centroid-based cosine similarity.
+
+    Articles without an embedding blob are placed in their own singleton cluster.
+
+    Args:
+        articles: List of article dicts, each containing an ``embedding`` key
+            with raw float32 bytes (as returned by ``get_articles_with_embeddings_since``).
+        threshold: Cosine similarity threshold for merging into an existing cluster.
+
+    Returns:
+        List of clusters, where each cluster is a list of article dicts.
+    """
+    clusters = []        # list of lists of article dicts
+    centroids = []       # list of numpy arrays (mean embedding per cluster)
+
+    for article in articles:
+        blob = article.get("embedding")
+        if not blob:
+            clusters.append([article])
+            centroids.append(None)
+            continue
+
+        vec = _blob_to_array(blob).astype(np.float32)
+        vec_norm = np.linalg.norm(vec)
+        if vec_norm == 0:
+            clusters.append([article])
+            centroids.append(None)
+            continue
+        vec_unit = vec / vec_norm
+
+        best_idx = -1
+        best_sim = threshold - 1e-9  # must exceed threshold
+
+        for i, centroid in enumerate(centroids):
+            if centroid is None:
+                continue
+            sim = float(np.dot(centroid, vec_unit))
+            if sim > best_sim:
+                best_sim = sim
+                best_idx = i
+
+        if best_idx >= 0:
+            # Merge into existing cluster and update centroid (running mean)
+            clusters[best_idx].append(article)
+            n = len(clusters[best_idx])
+            centroids[best_idx] = (centroids[best_idx] * (n - 1) + vec_unit) / n
+            c_norm = np.linalg.norm(centroids[best_idx])
+            if c_norm > 0:
+                centroids[best_idx] /= c_norm
+        else:
+            clusters.append([article])
+            centroids.append(vec_unit.copy())
+
+    return clusters
+
+
 def semantic_search(query, top_k=15, since_days=None):
     """Perform semantic search over stored article embeddings.
 

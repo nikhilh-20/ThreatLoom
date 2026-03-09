@@ -81,6 +81,9 @@
                         <button class="btn btn-primary" id="ingest-btn" onclick="showIngestDialog()" title="Process specific article URLs">
                             <span class="btn-icon">&#8659;</span> Ingest URLs
                         </button>
+                        <button class="btn btn-primary" id="digest-btn" onclick="sendDigestNow()" title="Send the daily digest email now" style="display:none">
+                            <span class="btn-icon">&#9993;</span> Send Digest
+                        </button>
                         <button class="btn btn-danger" id="abort-btn" onclick="abortPipeline()" title="Stop the running pipeline between stages" style="display:none">
                             &#9632; Abort
                         </button>

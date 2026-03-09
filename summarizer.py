@@ -185,11 +185,17 @@ def _compose_markdown(data):
 
     sections.append("# Details")
     for point in data.get("details", []):
+        point = str(point).strip()
+        if not point or point.startswith("#"):
+            continue
         sections.append(f"- {point}")
     sections.append("")
 
     sections.append("# Mitigations")
     for point in data.get("mitigations", []):
+        point = str(point).strip()
+        if not point or point.startswith("#"):
+            continue
         sections.append(f"- {point}")
 
     return "\n".join(sections)
@@ -741,6 +747,115 @@ def generate_trend_analysis(category_name, subcategory_tag=None, since_days=None
     }
 
 
+DIGEST_STORY_PROMPT = """You are a senior cybersecurity threat intelligence analyst.
+You have been given multiple news articles from different sources that cover the same security story.
+Synthesize them into a unified story entry for a daily digest email.
+
+Produce a JSON object with exactly five keys:
+- "story_title": A concise, specific headline (max 15 words) that captures the core security event.
+- "executive_summary": A paragraph that weaves together what each source reported, using the pattern
+  "Source X reported that ... Source Y noted that ...". Mention each source by name.
+- "novelty": A paragraph describing what is novel or noteworthy about the TTPs, tools, or techniques
+  across all sources. Synthesize novelty from all sources; if nothing is novel say so briefly.
+- "details": A JSON array of strings. Each string is one detailed bullet synthesizing technical
+  findings across sources. Use "Source X said ..." attribution where sources differ. Be thorough.
+- "mitigations": A JSON array of strings. Each string is one mitigation or defensive recommendation,
+  attributed to the source that mentioned it (e.g., "Source X recommended ...").
+
+Article sources to synthesize:
+{articles_block}
+
+Respond ONLY with valid JSON."""
+
+
+def synthesize_digest_story(cluster_articles):
+    """Synthesize a cluster of related articles into a single digest story via LLM.
+
+    Args:
+        cluster_articles: List of article dicts with keys ``title``, ``url``,
+            ``source_name``, and ``summary_text``.
+
+    Returns:
+        A dict with keys ``story_title``, ``executive_summary``, ``details``
+        (list), ``mitigations`` (list), and ``source_urls`` (list).
+        Returns a template-assembled fallback dict on LLM failure.
+    """
+    import re as _re
+
+    source_urls = [a.get("url", "") for a in cluster_articles]
+
+    # Build the articles block for the prompt
+    blocks = []
+    for art in cluster_articles:
+        summary = art.get("summary_text") or ""
+        # Extract executive summary section
+        match = _re.search(r"# Executive Summary\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+        exec_sum = match.group(1).strip() if match else summary[:500]
+        # Extract details
+        d_match = _re.search(r"# Details\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+        details_raw = d_match.group(1).strip() if d_match else ""
+        # Extract novelty
+        n_match = _re.search(r"# Novelty[^\n]*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+        novelty_raw = n_match.group(1).strip() if n_match else ""
+        # Extract mitigations
+        m_match = _re.search(r"# Mitigations\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+        mit_raw = m_match.group(1).strip() if m_match else ""
+        blocks.append(
+            f"Source: {art.get('source_name', 'Unknown')}\n"
+            f"Title: {art.get('title', '')}\n"
+            f"Executive Summary: {exec_sum}\n"
+            f"Novelty: {novelty_raw[:400]}\n"
+            f"Details: {details_raw[:600]}\n"
+            f"Mitigations: {mit_raw[:400]}"
+        )
+
+    articles_block = "\n\n---\n\n".join(blocks)
+    prompt = DIGEST_STORY_PROMPT.replace("{articles_block}", articles_block[:15000])
+
+    for attempt in range(3):
+        try:
+            content_str, it, ot = call_llm(
+                prompt,
+                [{"role": "user", "content": f"Synthesize these {len(cluster_articles)} articles into one digest story."}],
+                temperature=0.3,
+                max_tokens=2000,
+                json_mode=True,
+            )
+            cost_tracker.add_tokens(it, ot)
+            result = json.loads(content_str)
+            return {
+                "story_title": result.get("story_title", cluster_articles[0].get("title", "Security Story")),
+                "executive_summary": result.get("executive_summary", ""),
+                "novelty": result.get("novelty", ""),
+                "details": result.get("details", []),
+                "mitigations": result.get("mitigations", []),
+                "source_urls": source_urls,
+            }
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                wait = 2 ** (attempt + 1)
+                logger.warning(f"Rate limited during digest synthesis, waiting {wait}s")
+                time.sleep(wait)
+            elif attempt < 2:
+                logger.error(f"Digest story synthesis error (attempt {attempt + 1}): {e}")
+                time.sleep(1)
+            else:
+                logger.error(f"All digest synthesis retries failed: {e}")
+
+    # Fallback: template-assembled from first article
+    first = cluster_articles[0]
+    return {
+        "story_title": first.get("title", "Security Story"),
+        "executive_summary": " ".join(
+            f"{a.get('source_name', 'A source')} reported on this story." for a in cluster_articles
+        ),
+        "details": [f"{a.get('source_name', 'Source')}: {(a.get('summary_text') or '')[:200]}" for a in cluster_articles],
+        "novelty": "",
+        "mitigations": [],
+        "source_urls": source_urls,
+    }
+
+
 def summarize_pending(limit=10):
     """Process a batch of unsummarized articles that have scraped content.
 
@@ -786,8 +901,10 @@ def summarize_pending(limit=10):
             logger.info(f"  Summarized article {article_id}")
 
             try:
-                from notifier import send_article_notification
-                send_article_notification(title, article_url, result.get("raw_data", {}))
+                email_mode = load_config().get("email_mode", "per_article")
+                if email_mode == "per_article":
+                    from notifier import send_article_notification
+                    send_article_notification(title, article_url, result.get("raw_data", {}))
             except Exception as e:
                 logger.debug(f"  Notification skipped for article {article_id}: {e}")
         else:

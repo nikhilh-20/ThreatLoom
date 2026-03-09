@@ -12,6 +12,7 @@ _scheduler = None
 _refresh_lock = threading.Lock()
 _is_refreshing = False
 _is_embedding_only = False   # True only when running embed-only job
+_is_digesting = False        # True when digest email job is running
 _abort_requested = False     # Set to True to stop pipeline between stages
 
 # Cost confirmation gate
@@ -167,6 +168,39 @@ def _run_pipeline(lookback_days=1, since_last_fetch=False):
         _refresh_lock.release()
 
 
+def _reschedule_digest(config=None):
+    """Register (or replace) the digest cron job based on the configured period.
+
+    - ``day``  → cron fires every day at 12:00 UTC (17:30 IST)
+    - ``week`` → cron fires every Friday at 12:00 UTC (17:30 IST)
+
+    Safe to call while the scheduler is running; uses ``replace_existing=True``.
+    """
+    if _scheduler is None:
+        return
+    if config is None:
+        config = load_config()
+    period = config.get("digest_period", "day")
+    if period == "week":
+        trigger_kwargs = dict(trigger="cron", day_of_week="fri", hour=12, minute=0, timezone="UTC")
+        label = "every Friday at 17:30 IST"
+    else:
+        trigger_kwargs = dict(trigger="cron", hour=12, minute=0, timezone="UTC")
+        label = "daily at 17:30 IST"
+    _scheduler.add_job(
+        _run_digest,
+        id="digest_job",
+        replace_existing=True,
+        **trigger_kwargs,
+    )
+    logger.info(f"Digest job scheduled: {label}")
+
+
+def reschedule_digest():
+    """Public wrapper — call after saving settings to apply the new digest period."""
+    _reschedule_digest()
+
+
 def start_scheduler(app=None):
     """Start the APScheduler background job."""
     global _scheduler
@@ -178,8 +212,9 @@ def start_scheduler(app=None):
 
     _scheduler = BackgroundScheduler(daemon=True)
     _scheduler.add_job(_run_pipeline, "interval", minutes=interval, id="fetch_pipeline")
+    _reschedule_digest(config)
     _scheduler.start()
-    logger.info(f"Scheduler started: fetching every {interval} minutes")
+    logger.info(f"Scheduler started: fetching every {interval} minutes; digest at 17:30 IST")
 
 
 def trigger_manual_refresh(lookback_days=1, since_last_fetch=False):
@@ -412,3 +447,144 @@ def trigger_process_pending():
     thread = threading.Thread(target=_run_process_pending, daemon=True)
     thread.start()
     return True
+
+
+def _run_digest(force=False):
+    """Cluster articles since last digest, synthesize stories, and send digest email.
+
+    Args:
+        force: If True, skip the period-gate check (used for manual "Send Now").
+    """
+    global _is_digesting
+
+    if _is_digesting:
+        logger.info("Digest already running, skipping")
+        return
+
+    config = load_config()
+    if not config.get("email_notifications_enabled"):
+        logger.info("Email notifications disabled, skipping digest")
+        return
+    if config.get("email_mode", "per_article") != "digest":
+        logger.info("Digest mode not enabled, skipping")
+        return
+
+    _is_digesting = True
+    try:
+        from datetime import datetime, timedelta
+        from database import get_last_digest_sent_at, get_articles_with_embeddings_since, log_digest_sent
+        from embeddings import cluster_articles_by_similarity
+        from summarizer import synthesize_digest_story
+        from notifier import send_digest_email
+
+        digest_period = config.get("digest_period", "day")
+        period_days = 7 if digest_period == "week" else 1
+
+        # Period gate: for scheduled runs, skip if not enough time has elapsed
+        last_sent = get_last_digest_sent_at()
+        if not force and last_sent:
+            last_sent_dt = datetime.fromisoformat(last_sent)
+            elapsed = datetime.utcnow() - last_sent_dt
+            if elapsed.total_seconds() < (period_days * 86400 - 3600):  # 1h grace
+                logger.info(f"Digest: last sent {elapsed} ago, period={digest_period}, skipping")
+                return
+
+        # Determine window:
+        # - If a prior auto-digest exists: use that timestamp
+        # - Manual send with no prior digest: use epoch (pick up all DB articles)
+        # - Scheduled send with no prior digest: use configured period as fallback
+        if last_sent:
+            since_dt = last_sent
+            since_label = last_sent[:10]
+        elif force:
+            since_dt = "1970-01-01T00:00:00"
+            since_label = "all time"
+        else:
+            since_dt = (datetime.utcnow() - timedelta(days=period_days)).isoformat()
+            since_label = (datetime.utcnow() - timedelta(days=period_days)).strftime("%Y-%m-%d")
+
+        today_label = datetime.utcnow().strftime("%Y-%m-%d")
+        period_label = f"{since_label} to {today_label}"
+
+        logger.info(f"Running digest: articles since {since_dt}")
+        articles = get_articles_with_embeddings_since(since_dt)
+
+        if not articles:
+            logger.info("Digest: no new articles since last digest, skipping email")
+            return
+
+        logger.info(f"Digest: clustering {len(articles)} articles")
+        clusters = cluster_articles_by_similarity(articles, threshold=0.82)
+        logger.info(f"Digest: {len(clusters)} story clusters")
+
+        stories = []
+        for cluster in clusters:
+            if len(cluster) == 1:
+                # Singleton: assemble from existing summary without extra LLM call
+                art = cluster[0]
+                import re as _re
+                summary = art.get("summary_text") or ""
+                exec_match = _re.search(r"# Executive Summary\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+                exec_sum = exec_match.group(1).strip() if exec_match else ""
+                n_match = _re.search(r"# Novelty[^\n]*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+                novelty = n_match.group(1).strip() if n_match else ""
+                d_match = _re.search(r"# Details\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+                details = [
+                    line.lstrip("- ").strip()
+                    for line in (d_match.group(1).strip().splitlines() if d_match else [])
+                    if line.strip() and not line.lstrip("- ").strip().startswith("#")
+                ]
+                m_match = _re.search(r"# Mitigations\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
+                mitigations = [
+                    line.lstrip("- ").strip()
+                    for line in (m_match.group(1).strip().splitlines() if m_match else [])
+                    if line.strip() and not line.lstrip("- ").strip().startswith("#")
+                ]
+                stories.append({
+                    "story_title": art.get("title", "Security Story"),
+                    "executive_summary": f"{art.get('source_name', 'A source')} reported: {exec_sum}",
+                    "novelty": novelty,
+                    "details": details,
+                    "mitigations": mitigations,
+                    "source_urls": [art.get("url", "")],
+                })
+            else:
+                story = synthesize_digest_story(cluster)
+                stories.append(story)
+
+        all_article_ids = [a["id"] for a in articles]
+        ok, err = send_digest_email(stories, period_label)
+        if ok:
+            if not force:
+                log_digest_sent(datetime.utcnow().isoformat(), all_article_ids, len(stories))
+            else:
+                logger.info("Digest sent manually — last_digest_sent_at not updated")
+        else:
+            logger.error(f"Digest send failed: {err}")
+
+    except Exception as e:
+        logger.error(f"Digest job error: {e}")
+    finally:
+        _is_digesting = False
+
+
+def trigger_send_digest():
+    """Spawn a background thread to run the digest job immediately (forced).
+
+    The period-gate check is bypassed so the digest is always sent regardless
+    of when the last one was sent.
+
+    Returns:
+        True if the job was started, False if already running.
+    """
+    global _is_digesting
+    if _is_refreshing or _is_digesting:
+        return False
+    thread = threading.Thread(target=_run_digest, kwargs={"force": True}, daemon=True)
+    thread.start()
+    return True
+
+
+def is_digesting():
+    """Return True if a digest job is currently running."""
+    return _is_digesting

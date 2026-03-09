@@ -90,13 +90,45 @@
 
     <section class="settings-section">
         <h2>Email Notifications</h2>
-        <p class="form-hint" style="margin-bottom:16px;">Receive an email for each newly summarized article. Requires an SMTP server (Gmail, Outlook, SendGrid, etc.).</p>
+        <p class="form-hint" style="margin-bottom:16px;">Receive email alerts for threat intelligence. Requires an SMTP server (Gmail, Outlook, SendGrid, etc.).</p>
         <div class="form-group" style="display:flex;align-items:center;gap:10px;">
             <label class="toggle-label" style="margin:0;">
-                <input type="checkbox" id="email-enabled" class="feed-toggle" {% if config.email_notifications_enabled %}checked{% endif %}>
+                <input type="checkbox" id="email-enabled" class="feed-toggle" {% if config.email_notifications_enabled %}checked{% endif %} onchange="toggleEmailMode()">
                 <span class="toggle-slider"></span>
             </label>
             <span style="font-size:0.9rem;color:var(--text-primary);font-weight:500;">Enable email notifications</span>
+        </div>
+        <div id="email-mode-section" style="margin-top:14px;{% if not config.email_notifications_enabled %}display:none;{% endif %}">
+            <label style="font-size:0.9rem;font-weight:600;color:var(--text-primary);display:block;margin-bottom:8px;">Email Mode</label>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                    <input type="radio" name="email-mode" id="email-mode-per-article" value="per_article" {% if config.email_mode != 'digest' %}checked{% endif %} style="margin-top:3px;" onchange="toggleDigestPeriod()">
+                    <span>
+                        <strong style="font-size:0.9rem;">Per-article</strong>
+                        <span class="form-hint" style="display:block;margin:0;">Send an immediate email for each newly processed article.</span>
+                    </span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+                    <input type="radio" name="email-mode" id="email-mode-digest" value="digest" {% if config.email_mode == 'digest' %}checked{% endif %} style="margin-top:3px;" onchange="toggleDigestPeriod()">
+                    <span>
+                        <strong style="font-size:0.9rem;">Digest</strong>
+                        <span class="form-hint" style="display:block;margin:0;">Send one consolidated digest email at 5:30 PM IST with related articles grouped into stories. You can also send it immediately from the main toolbar.</span>
+                    </span>
+                </label>
+            </div>
+            <div id="digest-period-section" style="margin-top:12px;padding-left:24px;{% if config.email_mode != 'digest' %}display:none;{% endif %}">
+                <label style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Digest Frequency</label>
+                <div style="display:flex;gap:20px;">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;">
+                        <input type="radio" name="digest-period" id="digest-period-day" value="day" {% if config.digest_period != 'week' %}checked{% endif %}>
+                        Daily <span class="form-hint" style="margin:0;">(every day at 5:30 PM IST)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;">
+                        <input type="radio" name="digest-period" id="digest-period-week" value="week" {% if config.digest_period == 'week' %}checked{% endif %}>
+                        Weekly <span class="form-hint" style="margin:0;">(every 7 days at 5:30 PM IST)</span>
+                    </label>
+                </div>
+            </div>
         </div>
         <div class="form-group">
             <label for="notification-email">Recipient Email</label>

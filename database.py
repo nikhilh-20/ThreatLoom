@@ -116,6 +116,14 @@ def init_db():
             FOREIGN KEY (article_id) REFERENCES articles(id)
         );
 
+        CREATE TABLE IF NOT EXISTS digest_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sent_at TEXT NOT NULL,
+            article_ids TEXT NOT NULL,
+            story_count INTEGER NOT NULL,
+            status TEXT DEFAULT 'sent'
+        );
+
         CREATE INDEX IF NOT EXISTS idx_articles_url ON articles(url);
         CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source_id);
         CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_date DESC);
@@ -1226,6 +1234,7 @@ def clear_database():
         DELETE FROM article_correlations;
         DELETE FROM summaries;
         DELETE FROM articles;
+        DELETE FROM digest_log;
         UPDATE sources SET last_fetched = NULL;
     """)
     conn.commit()
@@ -1423,3 +1432,62 @@ def save_trend_analysis(category_name, period_type, period_label, trend_text, ar
         (category_name, period_type, period_label, trend_text, article_count, article_hash, model_used),
     )
     conn.commit()
+
+
+# ============================================================
+# Digest helpers
+# ============================================================
+
+def get_last_digest_sent_at():
+    """Return the ISO timestamp of the most recent digest, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT sent_at FROM digest_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return row["sent_at"] if row else None
+
+
+def log_digest_sent(sent_at, article_ids, story_count):
+    """Record a sent digest in digest_log.
+
+    Args:
+        sent_at: ISO datetime string of when the digest was sent.
+        article_ids: List of integer article IDs included in the digest.
+        story_count: Number of story clusters in the digest.
+    """
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO digest_log (sent_at, article_ids, story_count) VALUES (?, ?, ?)",
+        (sent_at, _json.dumps(article_ids), story_count),
+    )
+    conn.commit()
+
+
+def get_articles_with_embeddings_since(since_dt):
+    """Return articles that have summaries and embeddings created after since_dt.
+
+    Args:
+        since_dt: ISO datetime string (exclusive lower bound on summaries.created_date).
+
+    Returns:
+        List of dicts with keys: id, title, url, source_name, summary_text,
+        executive_summary, details, mitigations, embedding (bytes blob).
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT a.id, a.title, a.url, s.name AS source_name,
+               sm.summary_text, sm.novelty_notes, ae.embedding
+        FROM articles a
+        JOIN sources s ON a.source_id = s.id
+        JOIN summaries sm ON sm.article_id = a.id
+        JOIN article_embeddings ae ON ae.article_id = a.id
+        WHERE sm.created_date > ?
+          AND sm.model_used IS NOT NULL
+          AND sm.model_used != 'failed'
+          AND sm.model_used != ''
+        ORDER BY sm.created_date ASC
+        """,
+        (since_dt,),
+    ).fetchall()
+    return [dict(r) for r in rows]

@@ -55,6 +55,8 @@ def get_default_config():
         "smtp_use_tls": True,
         "notification_email": "",
         "email_notifications_enabled": False,
+        "email_mode": "per_article",
+        "digest_period": "day",
         "report_token": "",
     }
 

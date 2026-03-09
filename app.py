@@ -41,12 +41,15 @@ from scheduler import (
     get_cost_estimate,
     get_pipeline_stage,
     is_aborting,
+    is_digesting,
     is_embedding_only,
     is_refreshing,
+    reschedule_digest,
     start_scheduler,
     trigger_embed,
     trigger_manual_refresh,
     trigger_process_pending,
+    trigger_send_digest,
 )
 
 # Configure logging
@@ -184,6 +187,9 @@ def api_stats():
     from llm_client import has_api_key
     stats = get_stats()
     stats["has_api_key"] = has_api_key()
+    cfg = load_config()
+    stats["email_mode"] = cfg.get("email_mode", "per_article")
+    stats["digest_period"] = cfg.get("digest_period", "day")
     return jsonify(stats)
 
 
@@ -250,16 +256,30 @@ def api_refresh_status():
 
     Returns:
         JSON with ``is_refreshing``, ``is_embedding``, ``is_aborting``,
-        ``stage``, ``cost_estimate``, ``actual_cost``.
+        ``is_digesting``, ``stage``, ``cost_estimate``, ``actual_cost``.
     """
     return jsonify({
         "is_refreshing": is_refreshing() or is_embedding_only(),
         "is_embedding": is_embedding_only(),
         "is_aborting": is_aborting(),
+        "is_digesting": is_digesting(),
         "stage": get_pipeline_stage(),
         "cost_estimate": get_cost_estimate(),
         "actual_cost": get_actual_cost(),
     })
+
+
+@app.route("/api/send-digest", methods=["POST"])
+def api_send_digest():
+    """Trigger the digest email job immediately.
+
+    Returns:
+        JSON with ``status`` (``"started"`` or ``"error"``).
+    """
+    ok = trigger_send_digest()
+    if ok:
+        return jsonify({"status": "started"})
+    return jsonify({"status": "error", "error": "Pipeline busy or digest already running"}), 409
 
 
 @app.route("/api/abort", methods=["POST"])
@@ -467,8 +487,13 @@ def api_settings():
             config["smtp_use_tls"] = bool(data["smtp_use_tls"])
         if "email_notifications_enabled" in data:
             config["email_notifications_enabled"] = bool(data["email_notifications_enabled"])
+        if "email_mode" in data and data["email_mode"] in ("per_article", "digest"):
+            config["email_mode"] = data["email_mode"]
+        if "digest_period" in data and data["digest_period"] in ("day", "week"):
+            config["digest_period"] = data["digest_period"]
 
         save_config(config)
+        reschedule_digest()
 
         # Sync sources to database
         for feed in config.get("feeds", []):
