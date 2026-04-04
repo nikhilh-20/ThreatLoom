@@ -14,8 +14,8 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 
 ## Features
 
-- **Feed Aggregation** — Ingests from 13 pre-configured security feeds (The Hacker News, BleepingComputer, Krebs on Security, CISA, etc.) plus Malpedia research. LLM-based relevance filtering removes noise.
-- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK. Supports OpenAI and Anthropic providers.
+- **Feed Aggregation** — Ingests from 61 pre-configured security feeds (The Hacker News, BleepingComputer, Krebs on Security, CISA, AWS, Cisco, Google, etc.) plus Malpedia research. LLM-based relevance filtering removes noise. Feeds are centrally managed in `config.json.example`.
+- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK. Supports OpenAI and Anthropic providers. Uses prompt caching to reduce token costs on repeated summaries.
 - **Attack Flow Visualization** — Interactive kill chain timeline showing phase-by-phase attack sequences with MITRE tactic/technique mapping and progressive reveal.
 - **Semantic Search** — RAG-powered chat interface. Ask questions in natural language and get answers grounded in your article database with citation cards.
 - **Historical Trend Analysis** — Multi-pass LLM analysis generating quarter-by-quarter and year-by-year reports for each threat category, with cross-period correlation. Results are cached and displayed in collapsible panels.
@@ -91,7 +91,7 @@ The app initializes the database, syncs feed sources, starts the background sche
 
 ## Configuration
 
-On first run, a `data/config.json` file is created with defaults. You can edit it directly or use the Settings page in the web UI.
+On first run, a `data/config.json` file is created with defaults from `config.json.example`. You can edit it directly or use the Settings page in the web UI. The default feeds list is maintained in `data/config.json.example` and merged into your config automatically — any new feeds added to the example file will appear on next startup.
 
 ```json
 {
@@ -130,11 +130,6 @@ LLM_PROVIDER=openai
 
 The app will automatically load these variables when starting. The `.env` file is in `.gitignore` and will never be committed to version control.
 
-> **Note:** If you're using Python directly (not Docker), install `python-dotenv` for automatic `.env` loading:
-> ```bash
-> pip install python-dotenv
-> ```
-
 ### Environment variables
 
 API keys and server settings can be configured via environment variables, which take precedence over `config.json`. This is the recommended approach for Docker deployments.
@@ -143,6 +138,9 @@ API keys and server settings can be configured via environment variables, which 
 |---|---|---|
 | `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`) |
 | `ANTHROPIC_API_KEY` | — | Anthropic API key (overrides `config.json`; used when `llm_provider` is `anthropic`) |
+| `LLM_PROVIDER` | `openai` | LLM provider: `openai` or `anthropic` |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | OpenAI model name (overrides `config.json`) |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Anthropic model name (overrides `config.json`) |
 | `MALPEDIA_API_KEY` | — | Optional Malpedia API key (overrides `config.json`) |
 | `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | auto-detect | Listen port (`5000` in Docker) |
@@ -167,29 +165,24 @@ API keys and server settings can be configured via environment variables, which 
 
 ### Adding feeds
 
-Add custom RSS/Atom feeds through the Settings page or directly in `config.json`:
+Add custom RSS/Atom feeds through the Settings page or directly in `config.json`. To add feeds that persist across new deployments, update `data/config.json.example` and they will be merged on next startup:
 
 ```json
 {"name": "My Custom Feed", "url": "https://example.com/feed.xml", "enabled": true}
 ```
 
+**For contributors:** New default feeds should be added to `data/config.json.example` to ensure all installations pick them up automatically on next run.
+
 ### Default feeds
 
-| Source | Enabled |
-|---|---|
-| The Hacker News | Yes |
-| BleepingComputer | Yes |
-| Krebs on Security | Yes |
-| SecurityWeek | Yes |
-| Dark Reading | Yes |
-| CISA Alerts | Yes |
-| Sophos News | Yes |
-| Infosecurity Magazine | Yes |
-| HackRead | Yes |
-| SC Media | Yes |
-| Cyber Defense Magazine | No |
-| The Record | Yes |
-| Schneier on Security | Yes |
+The app includes 61 pre-configured feeds covering security news sites, research blogs, and independent security researchers. See `data/config.json.example` for the complete list. Key sources include:
+
+- **News Outlets**: The Hacker News, BleepingComputer, Krebs on Security, SecurityWeek, Dark Reading, Threat Post
+- **Vendor Research**: Sophos, Infosecurity, Palo Alto Networks, Cisco, AWS, Google, Kaspersky, SentinelOne
+- **Government & Standards**: CISA Alerts, Cloud Security Alliance
+- **Independent Researchers**: Troy Hunt, Schneier on Security, Graham Cluley, and others
+
+All feeds are enabled by default. Disable any by setting `"enabled": false` in `config.json`.
 
 ### LLM models
 
@@ -197,10 +190,8 @@ Add custom RSS/Atom feeds through the Settings page or directly in `config.json`
 
 | Model | Best for |
 |---|---|
-| `gpt-4o-mini` | Daily use — fast, cost-effective (default) |
-| `gpt-4o` | Higher quality summaries and insights |
-| `gpt-4-turbo` | Complex analysis tasks |
-| `gpt-3.5-turbo` | Budget-conscious processing |
+| `gpt-4.1-mini` | Fast, cost-effective (default) |
+| `gpt-5-mini` | Higher quality summaries with faster inference |
 
 **Anthropic**
 
@@ -265,8 +256,10 @@ requirements.txt      # Python dependencies
 run.bat               # Windows one-click launcher
 Dockerfile            # Container image definition
 docker-compose.yml    # Docker Compose service config
-config.json           # User configuration (created on first run)
-threatlandscape.db    # SQLite database (created on first run)
+data/
+  config.json         # User configuration (created on first run)
+  config.json.example # Default feeds list (single source of truth)
+  threatlandscape.db  # SQLite database (created on first run)
 templates/            # Jinja2 HTML templates (dashboard, article, intelligence, settings)
 static/               # CSS (dark theme), JavaScript (client-side logic), and images
 docs/                 # MkDocs documentation source
@@ -285,6 +278,8 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 | GET | `/api/articles/<id>` | Single article with full summary |
 | GET | `/api/articles/categorized` | Articles grouped by threat category (params: `days`) |
 | DELETE | `/api/articles/<id>/summary` | Remove an article's AI summary and embeddings |
+| GET | `/api/available-tags` | List all distinct tags present in the database |
+| PATCH | `/api/articles/<id>/tags` | Update the tags on a specific article (body: `{"tags": [...]}`) |
 
 ### Sources & Stats
 
@@ -303,6 +298,10 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 | POST | `/api/embed` | Generate embeddings for all summarized articles that don't have one yet |
 | POST | `/api/ingest-urls` | Scrape and summarize specific article URLs without a full feed fetch |
 | POST | `/api/clear-db` | Delete articles/summaries; body `{"days": N}` limits to articles older than N days (0 = all) |
+| POST | `/api/send-digest` | Trigger digest email immediately, bypassing scheduled time |
+| POST | `/api/cost/approve` | Approve the summarization cost estimate and continue the pipeline |
+| POST | `/api/cost/decline` | Decline the cost estimate; pipeline aborts at the confirm stage |
+| POST | `/api/cost/dismiss` | Dismiss the post-run actual cost notification |
 
 ### Categories & Insights
 
@@ -327,6 +326,7 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 |---|---|---|
 | POST | `/api/settings` | Save configuration (including email notification settings) |
 | POST | `/api/test-key` | Validate OpenAI API key |
+| POST | `/api/test-anthropic-key` | Validate Anthropic API key |
 | POST | `/api/test-malpedia-key` | Validate Malpedia API key |
 | POST | `/api/test-email` | Send test email notification (accepts SMTP settings in body) |
 | POST | `/api/report` | Send an LLM output report email to the developer (body: `{"type", "identifier", "llm_content", "metadata", "user_note", "token"}`) |
@@ -367,9 +367,10 @@ mkdocs gh-deploy
 | Component | Technology |
 |---|---|
 | Web framework | Flask |
-| Feed parsing | feedparser |
+| Feed parsing | feedparser (with socket timeout protection) |
 | Content extraction | trafilatura |
-| AI / LLM | OpenAI (GPT-4o-mini/4o, text-embedding-3-small), Anthropic (Claude Haiku/Sonnet/Opus) |
+| AI / LLM | OpenAI (GPT-4.1-mini/5-mini, text-embedding-3-small), Anthropic (Claude Haiku/Sonnet/Opus) |
+| LLM Optimization | Prompt caching (reduced token costs on repeated summaries) |
 | Scheduling | APScheduler |
 | Database | SQLite (WAL mode) |
 | Vector search | numpy (cosine similarity) |

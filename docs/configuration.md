@@ -9,7 +9,7 @@ On first run, `data/config.json` is created with default values:
 ```json
 {
   "openai_api_key": "",
-  "openai_model": "gpt-4o-mini",
+  "openai_model": "gpt-4.1-mini",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "llm_provider": "openai",
@@ -39,16 +39,14 @@ On first run, `data/config.json` is created with default values:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `openai_api_key` | string | `""` | Your OpenAI API key. Required for summarization, relevance filtering, embeddings, and intelligence chat. Also required for embeddings when using the Anthropic provider. |
-| `openai_model` | string | `"gpt-4o-mini"` | OpenAI model used for summarization, relevance checks, and insights. |
+| `openai_model` | string | `"gpt-4.1-mini"` | OpenAI model used for summarization, relevance checks, and insights. |
 
 #### OpenAI Model Options
 
 | Model | Speed | Cost | Quality | Best For |
 |---|---|---|---|---|
-| `gpt-4o-mini` | Fast | Low | Good | Daily use, high-volume processing |
-| `gpt-4o` | Medium | Medium | Excellent | Higher quality summaries and insights |
-| `gpt-4-turbo` | Medium | High | Excellent | Complex analysis tasks |
-| `gpt-3.5-turbo` | Fast | Lowest | Adequate | Budget-conscious processing |
+| `gpt-4.1-mini` | Fast | Low | Good | Daily use, high-volume processing (default) |
+| `gpt-5-mini` | Fast | Low | Very Good | Higher quality summaries with faster inference |
 
 ### Anthropic Settings
 
@@ -139,7 +137,7 @@ The `feeds` array contains all RSS/Atom sources:
 
 ## Default Feeds
 
-Threat Loom ships with 13 pre-configured cybersecurity feeds:
+Threat Loom ships with 61 pre-configured cybersecurity feeds. A representative sample:
 
 | Feed | URL | Default |
 |---|---|---|
@@ -220,6 +218,8 @@ All API keys and critical settings can be supplied as environment variables. The
 | `OPENAI_API_KEY` | `openai_api_key` | OpenAI API key. Always required for embeddings. |
 | `ANTHROPIC_API_KEY` | `anthropic_api_key` | Anthropic API key. Required when `LLM_PROVIDER=anthropic`. |
 | `LLM_PROVIDER` | `llm_provider` | Active LLM provider: `openai` or `anthropic`. |
+| `OPENAI_MODEL` | `openai_model` | OpenAI model name (e.g. `gpt-4.1-mini`). |
+| `ANTHROPIC_MODEL` | `anthropic_model` | Anthropic model name (e.g. `claude-haiku-4-5-20251001`). |
 | `MALPEDIA_API_KEY` | `malpedia_api_key` | Malpedia research library API token. |
 | `DATA_DIR` | — | Directory for `config.json` and `threatlandscape.db`. |
 | `SMTP_HOST` | `smtp_host` | SMTP server hostname. |

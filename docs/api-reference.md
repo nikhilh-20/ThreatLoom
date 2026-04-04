@@ -78,7 +78,7 @@ Fetch a single article with its full summary.
   "key_points": "[{\"phase\": \"Initial Access\", ...}]",
   "tags": ["ransomware", "healthcare"],
   "novelty_notes": "First observed use of...",
-  "model_used": "gpt-4o-mini",
+  "model_used": "gpt-4.1-mini",
   "image_url": "https://example.com/image.jpg"
 }
 ```
@@ -96,6 +96,42 @@ Remove the AI summary and embeddings for a single article. The article itself is
 ```
 
 Returns 404 if the article has no summary.
+
+---
+
+### GET `/api/available-tags`
+
+List all distinct tags currently present in the database.
+
+**Response**
+
+```json
+{
+  "tags": ["ransomware", "lockbit", "phishing", "apt29"]
+}
+```
+
+---
+
+### PATCH `/api/articles/<article_id>/tags`
+
+Update the tags on a specific article.
+
+**Request Body**
+
+```json
+{
+  "tags": ["ransomware", "lockbit", "healthcare"]
+}
+```
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+Returns 404 if the article does not exist.
 
 ---
 
@@ -334,6 +370,63 @@ Generate embeddings for all summarized articles that don't have one yet. Runs as
 
 ---
 
+### POST `/api/cost/approve`
+
+Approve the summarization cost estimate shown during the `confirm` pipeline stage. The pipeline proceeds to the summarize stage.
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+---
+
+### POST `/api/cost/decline`
+
+Decline the cost estimate. The pipeline aborts at the confirm stage without making any LLM calls.
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+---
+
+### POST `/api/cost/dismiss`
+
+Dismiss the post-run actual cost notification shown after summarization completes.
+
+**Response**
+
+```json
+{"status": "ok"}
+```
+
+---
+
+### POST `/api/send-digest`
+
+Trigger the digest email job immediately, bypassing the scheduled time. Collects all articles since the last digest and sends a summary email.
+
+**Response**
+
+```json
+{"status": "started"}
+```
+
+Returns 409 (Conflict) if a pipeline or digest job is already running:
+
+```json
+{
+  "status": "error",
+  "error": "Pipeline busy or digest already running"
+}
+```
+
+---
+
 ### POST `/api/ingest-urls`
 
 Scrape and summarize a list of specific article URLs without running a full feed fetch.
@@ -422,7 +515,7 @@ Generate or retrieve a cached trend + forecast for a category.
   "trend": "## Trend Analysis\n\nOver the past several months...",
   "forecast": "## Forecast\n\nLooking ahead 3-6 months...",
   "article_count": 42,
-  "model_used": "gpt-4o-mini",
+  "model_used": "gpt-4.1-mini",
   "cached": true,
   "generated_at": "2024-01-15T12:00:00",
   "actual_cost": 0.0
@@ -468,7 +561,7 @@ Generate or retrieve cached historical trend analysis (quarterly + yearly) for a
       "trend_text": "## 2024 Annual Trends\n\n..."
     }
   ],
-  "model_used": "gpt-4o-mini",
+  "model_used": "gpt-4.1-mini",
   "actual_cost": 0.012
 }
 ```
@@ -502,7 +595,7 @@ Estimate the API cost before generating a trend analysis or forecast. Call this 
 {
   "article_count": 42,
   "estimated_cost": 0.008,
-  "model": "gpt-4o-mini",
+  "model": "gpt-4.1-mini",
   "n_quarters": 4,
   "n_years": 1
 }
@@ -551,7 +644,7 @@ Time references are detected automatically from natural language: `last N hours`
       "score": 0.89
     }
   ],
-  "model_used": "gpt-4o-mini",
+  "model_used": "gpt-4.1-mini",
   "since_days": 7,
   "error": null
 }
@@ -634,7 +727,7 @@ Save configuration settings.
 {
   "llm_provider": "openai",
   "openai_api_key": "sk-proj-...",
-  "openai_model": "gpt-4o-mini",
+  "openai_model": "gpt-4.1-mini",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "malpedia_api_key": "",
@@ -684,6 +777,28 @@ Validate an OpenAI API key.
 ```json
 {
   "key": "sk-proj-..."
+}
+```
+
+**Response**
+
+```json
+{
+  "valid": true
+}
+```
+
+---
+
+### POST `/api/test-anthropic-key`
+
+Validate an Anthropic API key.
+
+**Request Body**
+
+```json
+{
+  "key": "sk-ant-..."
 }
 ```
 
