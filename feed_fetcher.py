@@ -1,4 +1,5 @@
 import logging
+import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from time import mktime
@@ -148,7 +149,12 @@ def _fetch_single_feed(feed_cfg, lookback_days, since_last_fetch):
             if parsed and parsed.bozo:
                 logger.debug(f"Parse failed for {name}, retrying with feedparser fetcher")
             try:
-                parsed = feedparser.parse(url)
+                _prev_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(FEED_FETCH_TIMEOUT)
+                try:
+                    parsed = feedparser.parse(url)
+                finally:
+                    socket.setdefaulttimeout(_prev_timeout)
             except Exception as e:
                 logger.warning(f"Failed to fetch feed {name}: {e}")
                 return 0
