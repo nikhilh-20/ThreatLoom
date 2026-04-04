@@ -63,11 +63,21 @@ Double-click `run.bat` — it creates a virtual environment, installs dependenci
 
 ### Docker
 
+Copy `.env.example` to `.env` and fill in your credentials:
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+docker compose up
+```
+
+The app will be available at `http://localhost:5000`. Data (database and config) persists in the local `./data` directory, shared between standalone and Docker modes.
+
+Alternatively, pass credentials as environment variables:
+
 ```bash
 OPENAI_API_KEY=sk-proj-your-key docker compose up
 ```
-
-Or set the key in `docker-compose.yml` and run `docker compose up`. The app will be available at `http://localhost:5000`. Data (database and config) persists in the local `./data` directory, shared between standalone and Docker modes.
 
 See [Environment variables](#environment-variables) below for all supported options.
 
@@ -86,7 +96,7 @@ On first run, a `data/config.json` file is created with defaults. You can edit i
 ```json
 {
   "openai_api_key": "",
-  "openai_model": "gpt-4o-mini",
+  "openai_model": "gpt-4.1-mini",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "llm_provider": "openai",
@@ -100,6 +110,30 @@ On first run, a `data/config.json` file is created with defaults. You can edit i
   ]
 }
 ```
+
+### Local development with `.env`
+
+For local development, create a `.env` file in the project root (copy from `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and add your API keys:
+
+```bash
+OPENAI_API_KEY=sk-proj-your-key-here
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+MALPEDIA_API_KEY=your-malpedia-key
+LLM_PROVIDER=openai
+```
+
+The app will automatically load these variables when starting. The `.env` file is in `.gitignore` and will never be committed to version control.
+
+> **Note:** If you're using Python directly (not Docker), install `python-dotenv` for automatic `.env` loading:
+> ```bash
+> pip install python-dotenv
+> ```
 
 ### Environment variables
 

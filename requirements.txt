@@ -8,3 +8,4 @@ apscheduler>=3.10
 requests>=2.31
 lxml_html_clean
 numpy>=1.24
+python-dotenv>=1.0

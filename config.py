@@ -2,6 +2,13 @@ import json
 import os
 import shutil
 
+# Load .env file if available (for local development)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, fall back to environment variables
+
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(_APP_DIR, "data")
 

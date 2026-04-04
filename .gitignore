@@ -4,6 +4,11 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Environment & secrets (never commit)
+.env
+.env.local
+.env.*.local
+
 # Application data (secrets, database)
 data/
 config.json
