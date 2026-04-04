@@ -121,12 +121,25 @@
         </section>
         {% endif %}
 
+        {# TEST SECTION — comment out once network-traffic tagging is verified #}
+        {% if 'network-traffic' in article.tags %}
+        <section class="article-section" style="border-left: 3px solid #f0a500; padding-left: 1rem;">
+            <h2>Network Traffic <span style="font-size: 0.7em; color: #f0a500; font-weight: normal;">[TEST]</span></h2>
+            {% if article.network_traffic_reason %}
+            <p>{{ article.network_traffic_reason }}</p>
+            {% else %}
+            <p><em>No reason recorded — re-process this article to generate one.</em></p>
+            {% endif %}
+        </section>
+        {% endif %}
+        {# END TEST SECTION #}
+
         <div class="article-actions">
             <a href="{{ article.url }}" target="_blank" rel="noopener" class="btn btn-primary">
                 Read Original Article &rarr;
             </a>
             {% if article.summary_text %}
-            <button class="btn btn-danger btn-sm" id="delete-summary-btn" onclick="deleteArticleSummary({{ article.id }})" title="Remove the AI-generated summary and embeddings for this article. The article itself is kept.">
+            <button class="btn btn-danger" id="delete-summary-btn" onclick="deleteArticleSummary({{ article.id }})" title="Permanently remove this article and all its artifacts from the database. It will be re-processed fresh on the next feed fetch.">
                 &#128465; Delete Summary &amp; Embeddings
             </button>
             <span class="save-status" id="delete-summary-status"></span>
@@ -508,7 +521,7 @@
     }
 
     async function deleteArticleSummary(articleId) {
-        if (!confirm('This will permanently delete the AI-generated summary and embeddings for this article. The article itself will be kept.\n\nContinue?')) return;
+        if (!confirm('This will permanently remove this article and all its artifacts (summary, embeddings, correlations) from the database.\n\nThe article will be re-processed from scratch the next time it appears in a feed.\n\nContinue?')) return;
 
         const btn = document.getElementById('delete-summary-btn');
         const status = document.getElementById('delete-summary-status');
@@ -520,8 +533,8 @@
             const res = await fetch(`/api/articles/${articleId}/summary`, { method: 'DELETE' });
             const data = await res.json();
             if (data.status === 'ok') {
-                if (status) { status.textContent = 'Deleted. Reload the page to reflect changes.'; status.className = 'save-status success'; }
-                if (btn) btn.style.display = 'none';
+                if (status) { status.textContent = 'Deleted. Redirecting...'; status.className = 'save-status success'; }
+                setTimeout(() => { window.location.href = '/'; }, 1000);
             } else {
                 throw new Error(data.error || 'Unknown error');
             }

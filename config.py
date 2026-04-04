@@ -29,7 +29,7 @@ def get_default_config():
     return {
         "llm_provider": "openai",
         "openai_api_key": "",
-        "openai_model": "gpt-4o-mini",
+        "openai_model": "gpt-4.1-mini",
         "anthropic_api_key": "",
         "anthropic_model": "claude-haiku-4-5-20251001",
         "malpedia_api_key": "",

@@ -1167,7 +1167,7 @@ function saveSettings() {
     const settings = {
         llm_provider: llmProvider ? llmProvider.value : 'openai',
         openai_api_key: effectiveOpenAiKey,
-        openai_model: model ? model.value : 'gpt-4o-mini',
+        openai_model: model ? model.value : 'gpt-5-mini',
         anthropic_api_key: anthropicKey ? anthropicKey.value : '',
         anthropic_model: anthropicModel ? anthropicModel.value : 'claude-3-5-haiku-20241022',
         malpedia_api_key: malpediaKey ? malpediaKey.value : '',

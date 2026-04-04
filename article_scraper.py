@@ -128,7 +128,7 @@ def scrape_article(url):
             return None
 
 
-def scrape_unscraped_articles(limit=20):
+def scrape_unscraped_articles(limit=20, article_ids=None):
     """Batch-process articles that have no ``content_raw`` yet.
 
     Fetches up to ``limit`` unscraped articles from the database,
@@ -138,11 +138,12 @@ def scrape_unscraped_articles(limit=20):
 
     Args:
         limit: Maximum number of articles to process in this batch.
+        article_ids: Optional list of article IDs to restrict processing to.
 
     Returns:
         Total number of articles processed (scraped + failed + deleted).
     """
-    articles = get_unscraped_articles(limit=limit)
+    articles = get_unscraped_articles(limit=limit, article_ids=article_ids)
     scraped = 0
     total = len(articles)
 

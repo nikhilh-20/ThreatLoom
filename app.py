@@ -312,10 +312,10 @@ def api_embed():
 
 @app.route("/api/articles/<int:article_id>/summary", methods=["DELETE"])
 def api_delete_article_summary(article_id):
-    """Delete the summary and embeddings for a single article.
+    """Delete all database artifacts for a single article.
 
-    The article row itself is preserved; only ``summaries`` and
-    ``article_embeddings`` entries are removed.
+    Removes the article row, its summary, embeddings, and correlations so
+    it will be treated as brand-new on the next feed fetch.
 
     Args:
         article_id: The article's integer ID from the URL path.
@@ -396,6 +396,7 @@ def api_ingest_urls():
 
     inserted = 0
     skipped = 0
+    inserted_ids = []
     for url in valid_urls:
         if article_exists(url):
             skipped += 1
@@ -405,9 +406,10 @@ def api_ingest_urls():
         art_id = insert_article(source_id, title, url)
         if art_id:
             inserted += 1
+            inserted_ids.append(art_id)
 
     if inserted > 0:
-        started = trigger_process_pending()
+        started = trigger_process_pending(article_ids=inserted_ids)
         if not started:
             return jsonify({
                 "status": "ok",
@@ -737,14 +739,18 @@ def api_trend_analysis():
     if len(articles) < 3:
         return jsonify({"error": "insufficient_data", "article_count": len(articles)})
 
-    pre_it, pre_ot = cost_tracker.get_tokens()
+    pre_it, pre_cit, pre_ot = cost_tracker.get_tokens()
     result = generate_trend_analysis(category, subcategory_tag=subcategory, since_days=since_days)
     if result is None:
         return jsonify({"error": "generation_failed"}), 500
 
-    post_it, post_ot = cost_tracker.get_tokens()
-    inp_price, out_price = _lookup_pricing(result["model_used"])
-    actual_cost = ((post_it - pre_it) * inp_price + (post_ot - pre_ot) * out_price) / 1_000_000
+    post_it, post_cit, post_ot = cost_tracker.get_tokens()
+    inp_price, cached_price, out_price = _lookup_pricing(result["model_used"])
+    actual_cost = (
+        (post_it - pre_it) * inp_price
+        + (post_cit - pre_cit) * cached_price
+        + (post_ot - pre_ot) * out_price
+    ) / 1_000_000
     result["actual_cost"] = actual_cost
 
     return jsonify(result)
@@ -813,14 +819,18 @@ def api_category_insight():
             })
 
     # Generate fresh insight, snapshot tokens to compute actual cost
-    pre_it, pre_ot = cost_tracker.get_tokens()
+    pre_it, pre_cit, pre_ot = cost_tracker.get_tokens()
     result = generate_category_insight(category, subcategory_tag=subcategory, since_days=since_days)
     if result is None:
         return jsonify({"error": "generation_failed"}), 500
 
-    post_it, post_ot = cost_tracker.get_tokens()
-    inp_price, out_price = _lookup_pricing(result["model_used"])
-    actual_cost = ((post_it - pre_it) * inp_price + (post_ot - pre_ot) * out_price) / 1_000_000
+    post_it, post_cit, post_ot = cost_tracker.get_tokens()
+    inp_price, cached_price, out_price = _lookup_pricing(result["model_used"])
+    actual_cost = (
+        (post_it - pre_it) * inp_price
+        + (post_cit - pre_cit) * cached_price
+        + (post_ot - pre_ot) * out_price
+    ) / 1_000_000
 
     # Save to cache
     save_category_insight(

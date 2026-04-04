@@ -333,8 +333,13 @@ def is_embedding_only():
     return _is_embedding_only
 
 
-def _run_process_pending():
-    """Scrape, summarize, and embed all pending articles without fetching new feeds."""
+def _run_process_pending(article_ids=None):
+    """Scrape, summarize, and embed pending articles without fetching new feeds.
+
+    Args:
+        article_ids: Optional list of article IDs to restrict processing to.
+            When provided, only those specific articles are processed.
+    """
     global _is_refreshing, _pipeline_stage, _cost_estimate, _cost_decision, _actual_cost
     global _abort_requested
 
@@ -354,12 +359,12 @@ def _run_process_pending():
         from article_scraper import scrape_unscraped_articles
         from summarizer import summarize_pending
         from embeddings import embed_pending_articles
-        from database import get_unsummarized_count
+        from database import get_unsummarized_count, get_unsummarized_articles
 
         # Scrape
         total_scraped = 0
         while not _abort_requested:
-            batch = scrape_unscraped_articles(limit=10)
+            batch = scrape_unscraped_articles(limit=10, article_ids=article_ids)
             if batch == 0:
                 break
             total_scraped += batch
@@ -369,8 +374,11 @@ def _run_process_pending():
             _pipeline_stage = "aborted"
             return
 
-        # Cost gate
-        to_summarize = get_unsummarized_count()
+        # Cost gate — count only the articles in scope
+        if article_ids:
+            to_summarize = len(get_unsummarized_articles(limit=len(article_ids) + 1, article_ids=article_ids))
+        else:
+            to_summarize = get_unsummarized_count()
         total_summarized = 0
         summarization_skipped = False
 
@@ -402,7 +410,7 @@ def _run_process_pending():
         if not summarization_skipped and to_summarize > 0:
             _pipeline_stage = "summarize"
             while not _abort_requested:
-                batch = summarize_pending()
+                batch = summarize_pending(article_ids=article_ids)
                 if batch == 0:
                     break
                 total_summarized += batch
@@ -423,7 +431,7 @@ def _run_process_pending():
 
         _pipeline_stage = "embed"
         while not _abort_requested:
-            batch = embed_pending_articles(limit=50)
+            batch = embed_pending_articles(limit=50, article_ids=article_ids)
             if batch == 0:
                 break
 
@@ -436,15 +444,19 @@ def _run_process_pending():
         _refresh_lock.release()
 
 
-def trigger_process_pending():
+def trigger_process_pending(article_ids=None):
     """Scrape, summarize, and embed pending articles without fetching new feeds.
+
+    Args:
+        article_ids: Optional list of article IDs to restrict processing to.
+            When provided, only those specific articles are processed.
 
     Returns:
         True if the job was started, False if another job is already running.
     """
     if _is_refreshing or _is_embedding_only:
         return False
-    thread = threading.Thread(target=_run_process_pending, daemon=True)
+    thread = threading.Thread(target=_run_process_pending, kwargs={"article_ids": article_ids}, daemon=True)
     thread.start()
     return True
 

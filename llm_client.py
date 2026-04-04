@@ -22,7 +22,7 @@ def get_model_name():
     provider = config.get("llm_provider", "openai")
     if provider == "anthropic":
         return config.get("anthropic_model", "claude-haiku-4-5-20251001")
-    return config.get("openai_model", "gpt-4o-mini")
+    return config.get("openai_model", "gpt-4.1-mini")
 
 
 def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000, json_mode=False):
@@ -52,7 +52,7 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, co
     from openai import OpenAI
 
     api_key = config.get("openai_api_key", "").strip()
-    model = config.get("openai_model", "gpt-4o-mini")
+    model = config.get("openai_model", "gpt-4.1-mini")
     client = OpenAI(api_key=api_key)
 
     all_messages = []
@@ -60,12 +60,24 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, co
         all_messages.append({"role": "system", "content": system_prompt})
     all_messages.extend(messages)
 
-    kwargs = {
-        "model": model,
-        "messages": all_messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    # Newer OpenAI reasoning models (o-series, gpt-5*) require
+    # max_completion_tokens, don't support temperature, and use
+    # internal reasoning tokens that count toward the limit.
+    _reasoning = model.startswith(("o1", "o3", "o4", "gpt-5"))
+    if _reasoning:
+        # Pad for reasoning overhead (~3x the desired output tokens)
+        kwargs = {
+            "model": model,
+            "messages": all_messages,
+            "max_completion_tokens": max_tokens * 3,
+        }
+    else:
+        kwargs = {
+            "model": model,
+            "messages": all_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 

@@ -97,7 +97,7 @@ def generate_embeddings_batch(texts):
     return None
 
 
-def embed_pending_articles(limit=50):
+def embed_pending_articles(limit=50, article_ids=None):
     """Fetch unembedded articles, generate embeddings, and store as BLOBs.
 
     Retrieves articles that have summaries but no embedding yet,
@@ -106,11 +106,12 @@ def embed_pending_articles(limit=50):
 
     Args:
         limit: Maximum number of articles to process in this batch.
+        article_ids: Optional list of article IDs to restrict processing to.
 
     Returns:
         Total number of articles processed (0 means nothing left).
     """
-    articles = get_unembedded_articles(limit=limit)
+    articles = get_unembedded_articles(limit=limit, article_ids=article_ids)
     if not articles:
         return 0
 

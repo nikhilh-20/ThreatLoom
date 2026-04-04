@@ -67,6 +67,7 @@ def init_db():
             key_points TEXT,
             tags TEXT,
             novelty_notes TEXT,
+            network_traffic_reason TEXT,
             model_used TEXT,
             created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (article_id) REFERENCES articles(id)
@@ -130,6 +131,16 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_summaries_article ON summaries(article_id);
     """)
     conn.commit()
+
+    # Migrations: add columns that may not exist in older databases
+    for col_sql in [
+        "ALTER TABLE summaries ADD COLUMN network_traffic_reason TEXT",
+    ]:
+        try:
+            conn.execute(col_sql)
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
 
 
 def upsert_source(name, url, enabled=True):
@@ -317,7 +328,8 @@ def get_article(article_id):
     row = conn.execute(
         """
         SELECT a.*, s.name as source_name,
-               sm.summary_text, sm.key_points, sm.tags, sm.novelty_notes, sm.model_used
+               sm.summary_text, sm.key_points, sm.tags, sm.novelty_notes,
+               sm.network_traffic_reason, sm.model_used
         FROM articles a
         JOIN sources s ON a.source_id = s.id
         LEFT JOIN summaries sm ON sm.article_id = a.id
@@ -328,7 +340,8 @@ def get_article(article_id):
     return dict(row) if row else None
 
 
-def save_summary(article_id, summary_text, key_points, tags, novelty_notes, model_used):
+def save_summary(article_id, summary_text, key_points, tags, novelty_notes, model_used,
+                 network_traffic_reason=None):
     """Upsert a summary for an article.
 
     Inserts a new summary or updates an existing one if the article
@@ -341,63 +354,98 @@ def save_summary(article_id, summary_text, key_points, tags, novelty_notes, mode
         tags: JSON array string of categorization tags.
         novelty_notes: What is novel about this threat, or None.
         model_used: The OpenAI model name, or ``"failed"``.
+        network_traffic_reason: 1-3 sentence explanation of why the
+            network-traffic tag was applied, or None.
     """
     conn = get_connection()
     conn.execute(
-        "INSERT INTO summaries (article_id, summary_text, key_points, tags, novelty_notes, model_used) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "INSERT INTO summaries (article_id, summary_text, key_points, tags, novelty_notes, "
+        "network_traffic_reason, model_used) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(article_id) DO UPDATE SET "
         "summary_text=excluded.summary_text, key_points=excluded.key_points, "
         "tags=excluded.tags, novelty_notes=excluded.novelty_notes, "
+        "network_traffic_reason=excluded.network_traffic_reason, "
         "model_used=excluded.model_used, created_date=CURRENT_TIMESTAMP",
-        (article_id, summary_text, key_points, tags, novelty_notes, model_used),
+        (article_id, summary_text, key_points, tags, novelty_notes,
+         network_traffic_reason, model_used),
     )
     conn.commit()
 
 
-def get_unsummarized_articles(limit=10):
+def get_unsummarized_articles(limit=10, article_ids=None):
     """Fetch articles that have scraped content but no summary yet.
 
     Args:
         limit: Maximum number of articles to return.
+        article_ids: Optional list of article IDs to restrict results to.
 
     Returns:
         List of dicts with ``id``, ``title``, ``url``, and ``content_raw``.
     """
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT a.id, a.title, a.url, a.content_raw
-        FROM articles a
-        LEFT JOIN summaries sm ON sm.article_id = a.id
-        WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
-        ORDER BY a.fetched_date DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+    if article_ids:
+        placeholders = ",".join("?" * len(article_ids))
+        rows = conn.execute(
+            f"""
+            SELECT a.id, a.title, a.url, a.content_raw
+            FROM articles a
+            LEFT JOIN summaries sm ON sm.article_id = a.id
+            WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+              AND a.id IN ({placeholders})
+            ORDER BY a.fetched_date DESC
+            LIMIT ?
+            """,
+            (*article_ids, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT a.id, a.title, a.url, a.content_raw
+            FROM articles a
+            LEFT JOIN summaries sm ON sm.article_id = a.id
+            WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+            ORDER BY a.fetched_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_unscraped_articles(limit=20):
+def get_unscraped_articles(limit=20, article_ids=None):
     """Fetch articles that have not been scraped yet.
 
     Args:
         limit: Maximum number of articles to return.
+        article_ids: Optional list of article IDs to restrict results to.
 
     Returns:
         List of dicts with ``id`` and ``url``.
     """
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT id, url FROM articles
-        WHERE content_raw IS NULL
-        ORDER BY fetched_date DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+    if article_ids:
+        placeholders = ",".join("?" * len(article_ids))
+        rows = conn.execute(
+            f"""
+            SELECT id, url FROM articles
+            WHERE content_raw IS NULL
+              AND id IN ({placeholders})
+            ORDER BY fetched_date DESC
+            LIMIT ?
+            """,
+            (*article_ids, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT id, url FROM articles
+            WHERE content_raw IS NULL
+            ORDER BY fetched_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -512,32 +560,51 @@ def get_all_embeddings(model_used=None):
     return [dict(r) for r in rows]
 
 
-def get_unembedded_articles(limit=50):
+def get_unembedded_articles(limit=50, article_ids=None):
     """Fetch articles that have summaries but no embedding yet.
 
     Excludes articles whose summary has ``model_used='failed'``.
 
     Args:
         limit: Maximum number of articles to return.
+        article_ids: Optional list of article IDs to restrict results to.
 
     Returns:
         List of dicts with ``id``, ``title``, and ``summary_text``.
     """
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT a.id, a.title, sm.summary_text
-        FROM articles a
-        JOIN summaries sm ON sm.article_id = a.id
-        LEFT JOIN article_embeddings ae ON ae.article_id = a.id
-        WHERE ae.article_id IS NULL
-          AND sm.summary_text IS NOT NULL AND sm.summary_text != ''
-          AND sm.model_used != 'failed'
-        ORDER BY a.fetched_date DESC
-        LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
+    if article_ids:
+        placeholders = ",".join("?" * len(article_ids))
+        rows = conn.execute(
+            f"""
+            SELECT a.id, a.title, sm.summary_text
+            FROM articles a
+            JOIN summaries sm ON sm.article_id = a.id
+            LEFT JOIN article_embeddings ae ON ae.article_id = a.id
+            WHERE ae.article_id IS NULL
+              AND sm.summary_text IS NOT NULL AND sm.summary_text != ''
+              AND sm.model_used != 'failed'
+              AND a.id IN ({placeholders})
+            ORDER BY a.fetched_date DESC
+            LIMIT ?
+            """,
+            (*article_ids, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT a.id, a.title, sm.summary_text
+            FROM articles a
+            JOIN summaries sm ON sm.article_id = a.id
+            LEFT JOIN article_embeddings ae ON ae.article_id = a.id
+            WHERE ae.article_id IS NULL
+              AND sm.summary_text IS NOT NULL AND sm.summary_text != ''
+              AND sm.model_used != 'failed'
+            ORDER BY a.fetched_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -1274,17 +1341,23 @@ def clear_articles_before_days(days):
 
 
 def delete_article_summary(article_id):
-    """Delete the summary and embedding for a single article.
+    """Delete all database artifacts for a single article.
 
-    Removes entries from ``summaries`` and ``article_embeddings`` for
-    the given article. The article row itself is preserved.
+    Removes entries from ``article_embeddings``, ``article_correlations``,
+    ``summaries``, and the ``articles`` row itself so that the article will
+    be treated as brand-new the next time it is encountered in a feed.
 
     Args:
         article_id: The article's integer ID.
     """
     conn = get_connection()
     conn.execute("DELETE FROM article_embeddings WHERE article_id = ?", (article_id,))
+    conn.execute(
+        "DELETE FROM article_correlations WHERE article_id_1 = ? OR article_id_2 = ?",
+        (article_id, article_id),
+    )
     conn.execute("DELETE FROM summaries WHERE article_id = ?", (article_id,))
+    conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
     conn.commit()
 
 

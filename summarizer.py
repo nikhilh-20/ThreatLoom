@@ -73,8 +73,30 @@ with these exact keys:
     When the article mentions a specific version (e.g., "LockBit 3.0"), use it: "lockbit-3.0".
     When the article mentions only the family name (e.g., "LockBit"), use the base name: "lockbit".
   * CVE IDs if mentioned (e.g., "cve-2024-1234")
+  * NEVER include "network-traffic" in this tags list. It is handled separately
+    below via the "network_traffic_tag" field.
   Prefer real named entities over generic labels. Every tag must be EITHER a standard
   category keyword OR a real MITRE ATT&CK entity name — never an invented description.
+
+- "network_traffic_tag": true or false. Two independent paths to TRUE:
+  PATH A — Network IOC: The article prints a specific IP address, domain name,
+    URL, HTTP header/URI pattern, User-Agent string, or JA3/JARM hash that an
+    analyst could paste directly into a Snort rule or blocklist. The literal
+    value (e.g. "203.0.113.5", "evil.example.com", "/api/exploit?cmd=") must
+    appear verbatim in the article text.
+    NOT enough: aggregate counts ("seized 34 domains"), general descriptions
+    ("attacked U.S. networks"), law-enforcement takedown summaries ("shut down
+    malicious IPs"), or naming products/services without a concrete IOC.
+  PATH B — PoC available: The article states that proof-of-concept exploit code
+    has been published, is publicly available, or was released by a researcher.
+    Look for phrases like "proof-of-concept", "PoC", "exploit code published",
+    "exploit code available", "PoC exploit".
+  If neither path applies, set false.
+
+- "network_traffic_reason": When "network_traffic_tag" is true, paste the exact
+  quote from the article (the IOC value for Path A, or the PoC availability
+  statement for Path B). If you cannot produce a verbatim quote, you must set
+  "network_traffic_tag" to false instead. Set to null when false.
 
 - "attack_flow": A JSON array representing the attack chain / kill chain as ordered steps.
   Each step is an object with these keys:
@@ -240,13 +262,20 @@ def summarize_article(title, content):
             )
             cost_tracker.add_tokens(it, ot)
             result = json.loads(content_str)
+            tags = result.get("tags", [])
+            # The LLM decides network-traffic via a separate boolean field
+            # to avoid false positives from vague network-adjacent mentions.
+            if result.get("network_traffic_tag") is True and "network-traffic" not in tags:
+                tags.append("network-traffic")
+            result["tags"] = tags
             summary_md = _compose_markdown(result)
 
             return {
                 "summary": summary_md,
-                "tags": result.get("tags", []),
+                "tags": tags,
                 "attack_flow": result.get("attack_flow", []),
                 "novelty": result.get("novelty", ""),
+                "network_traffic_reason": result.get("network_traffic_reason") or None,
                 "raw_data": result,
             }
 
@@ -301,7 +330,7 @@ def estimate_insight_cost(article_count, model):
         Estimated cost in USD as a float.
     """
     from cost_tracker import _lookup_pricing
-    inp_price, out_price = _lookup_pricing(model)
+    inp_price, _cached_price, out_price = _lookup_pricing(model)
     # ~200 tokens per article for exec-summary context, capped at 5000, plus ~200 system tokens
     estimated_input = min(article_count * 200, 5000) + 200
     return (estimated_input * inp_price + 2000 * out_price) / 1_000_000
@@ -318,7 +347,7 @@ def estimate_trend_cost(articles, model):
         Tuple of (estimated_cost_usd, n_quarters, n_years).
     """
     from cost_tracker import _lookup_pricing
-    inp_price, out_price = _lookup_pricing(model)
+    inp_price, _cached_price, out_price = _lookup_pricing(model)
     groups = _group_by_quarter(articles)
     n_quarters = len(groups)
     n_years = len({year for (year, _) in groups})
@@ -856,7 +885,7 @@ def synthesize_digest_story(cluster_articles):
     }
 
 
-def summarize_pending(limit=10):
+def summarize_pending(limit=10, article_ids=None):
     """Process a batch of unsummarized articles that have scraped content.
 
     Fetches up to ``limit`` articles with ``content_raw`` but no summary,
@@ -866,6 +895,7 @@ def summarize_pending(limit=10):
 
     Args:
         limit: Maximum number of articles to summarize in this batch.
+        article_ids: Optional list of article IDs to restrict processing to.
 
     Returns:
         Total number of articles processed (successful + failed).
@@ -874,7 +904,7 @@ def summarize_pending(limit=10):
         logger.info("No LLM API key configured, skipping summarization")
         return 0
 
-    articles = get_unsummarized_articles(limit=limit)
+    articles = get_unsummarized_articles(limit=limit, article_ids=article_ids)
     summarized = 0
 
     for article in articles:
@@ -896,6 +926,7 @@ def summarize_pending(limit=10):
                 tags=json.dumps(result["tags"]),
                 novelty_notes=novelty if novelty else None,
                 model_used=get_model_name(),
+                network_traffic_reason=result.get("network_traffic_reason"),
             )
             summarized += 1
             logger.info(f"  Summarized article {article_id}")
