@@ -10,8 +10,11 @@ __pycache__/
 .env.*.local
 
 # Application data (secrets, database)
-data/
+data/config.json
 config.json
+data/*.db
+data/*.db-shm
+data/*.db-wal
 *.db
 *.db-shm
 *.db-wal

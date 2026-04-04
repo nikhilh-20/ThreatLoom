@@ -24,14 +24,26 @@ for _fname in ("config.json", "threatlandscape.db"):
         shutil.move(_src, _dst)
 
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
+CONFIG_EXAMPLE_PATH = os.path.join(DATA_DIR, "config.json.example")
+
+
+def _load_example_feeds():
+    """Return the feeds list from ``config.json.example``, or [] if missing."""
+    if not os.path.exists(CONFIG_EXAMPLE_PATH):
+        return []
+    with open(CONFIG_EXAMPLE_PATH, "r", encoding="utf-8") as f:
+        return json.load(f).get("feeds", [])
 
 
 def get_default_config():
-    """Return the hardcoded default configuration dictionary.
+    """Return the default configuration dictionary.
+
+    Feeds are sourced from ``data/config.json.example``, which is the single
+    source of truth for the pre-configured RSS feed list.
 
     Returns:
-        dict: Default config with empty API keys, ``gpt-4o-mini`` model,
-        30-minute fetch interval, and 13 pre-configured RSS feeds.
+        dict: Default config with empty API keys, ``gpt-4.1-mini`` model,
+        30-minute fetch interval, and feeds from ``config.json.example``.
     """
     return {
         "llm_provider": "openai",
@@ -41,20 +53,7 @@ def get_default_config():
         "anthropic_model": "claude-haiku-4-5-20251001",
         "malpedia_api_key": "",
         "fetch_interval_minutes": 30,
-        "feeds": [
-            {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "enabled": True},
-            {"name": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "enabled": True},
-            {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/", "enabled": True},
-            {"name": "SecurityWeek", "url": "https://feeds.feedburner.com/securityweek", "enabled": True},
-            {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml", "enabled": True},
-            {"name": "CISA Alerts", "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "enabled": True},
-            {"name": "Sophos News", "url": "https://news.sophos.com/en-us/feed/", "enabled": True},
-            {"name": "Infosecurity Magazine", "url": "https://www.infosecurity-magazine.com/rss/news/", "enabled": True},
-            {"name": "HackRead", "url": "https://hackread.com/feed/", "enabled": True},
-            {"name": "SC Media", "url": "https://www.scworld.com/rss", "enabled": True},
-            {"name": "The Record", "url": "https://therecord.media/feed", "enabled": True},
-            {"name": "Schneier on Security", "url": "https://www.schneier.com/feed/atom/", "enabled": True},
-        ],
+        "feeds": _load_example_feeds(),
         "smtp_host": "",
         "smtp_port": 587,
         "smtp_username": "",
@@ -71,6 +70,9 @@ def get_default_config():
 def load_config():
     """Load configuration from ``config.json``, creating it with defaults if absent.
 
+    On every load, feeds from ``config.json.example`` are merged in by URL so
+    that new feeds added to the example are picked up by existing installations.
+
     Returns:
         dict: The parsed configuration dictionary.
     """
@@ -80,6 +82,13 @@ def load_config():
     else:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
+
+        # Merge any feeds from the example file that aren't in config.json yet.
+        existing_urls = {f["url"] for f in config.get("feeds", [])}
+        new_feeds = [f for f in _load_example_feeds() if f["url"] not in existing_urls]
+        if new_feeds:
+            config.setdefault("feeds", []).extend(new_feeds)
+            save_config(config)
 
     # Environment variables override file-based keys
     env_openai = os.environ.get("OPENAI_API_KEY")
