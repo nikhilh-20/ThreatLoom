@@ -25,7 +25,8 @@ def get_model_name():
     return config.get("openai_model", "gpt-4.1-mini")
 
 
-def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000, json_mode=False):
+def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000,
+             json_mode=False, system_blocks=None):
     """Make an LLM API call using the configured provider.
 
     Args:
@@ -34,9 +35,17 @@ def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000, json_mod
         temperature: Sampling temperature.
         max_tokens: Maximum output tokens.
         json_mode: If True, instruct the model to respond with valid JSON only.
+        system_blocks: Optional list of pre-structured Anthropic content blocks
+            for the system field (Anthropic only). When provided, ``system_prompt``
+            is ignored for Anthropic calls. For OpenAI, the text of each block is
+            joined and used as the system message. Each block must follow the form:
+            {"type": "text", "text": "...", "cache_control": {...}}
 
     Returns:
-        Tuple of (content_string, input_tokens, output_tokens).
+        5-tuple of (content_string, input_tokens, output_tokens,
+                    cache_creation_tokens, cache_read_tokens).
+        cache_creation_tokens: tokens written to Anthropic cache (0 for OpenAI).
+        cache_read_tokens: tokens served from cache (both providers).
 
     Raises:
         Exception on API errors — caller handles retries.
@@ -44,20 +53,31 @@ def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000, json_mod
     config = load_config()
     provider = config.get("llm_provider", "openai")
     if provider == "anthropic":
-        return _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode, config)
-    return _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, config)
+        return _call_anthropic(system_prompt, messages, temperature, max_tokens,
+                               json_mode, config, system_blocks=system_blocks)
+    return _call_openai(system_prompt, messages, temperature, max_tokens,
+                        json_mode, config, system_blocks=system_blocks)
 
 
-def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, config):
+def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode,
+                 config, system_blocks=None):
     from openai import OpenAI
 
     api_key = config.get("openai_api_key", "").strip()
     model = config.get("openai_model", "gpt-4.1-mini")
     client = OpenAI(api_key=api_key)
 
+    # Resolve system text: prefer system_blocks (join text fields), else system_prompt.
+    if system_blocks:
+        resolved_system = "\n\n".join(
+            b["text"] for b in system_blocks if b.get("type") == "text"
+        )
+    else:
+        resolved_system = system_prompt
+
     all_messages = []
-    if system_prompt:
-        all_messages.append({"role": "system", "content": system_prompt})
+    if resolved_system:
+        all_messages.append({"role": "system", "content": resolved_system})
     all_messages.extend(messages)
 
     # Newer OpenAI reasoning models (o-series, gpt-5*) require
@@ -83,12 +103,23 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode, co
 
     resp = client.chat.completions.create(**kwargs)
     content = resp.choices[0].message.content
-    input_tokens = resp.usage.prompt_tokens if resp.usage else 0
+    prompt_tokens = resp.usage.prompt_tokens if resp.usage else 0
     output_tokens = resp.usage.completion_tokens if resp.usage else 0
-    return content, input_tokens, output_tokens
+
+    # OpenAI caching is automatic; extract cached token count from usage.
+    cached_tokens = 0
+    if resp.usage:
+        details = getattr(resp.usage, "prompt_tokens_details", None)
+        if details:
+            cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
+    input_tokens = prompt_tokens - cached_tokens  # non-cached portion
+    # OpenAI does not charge for cache writes, so cache_creation_tokens = 0.
+    return content, input_tokens, output_tokens, 0, cached_tokens
 
 
-def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode, config):
+def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
+                    config, system_blocks=None):
     import time
     import anthropic
 
@@ -96,7 +127,7 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
     model = config.get("anthropic_model", "claude-haiku-4-5-20251001")
     client = anthropic.Anthropic(api_key=api_key)
 
-    # Separate system-role messages from user/assistant messages
+    # Separate system-role messages from user/assistant messages.
     system_parts = []
     if system_prompt:
         system_parts.append(system_prompt)
@@ -112,11 +143,11 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
         json_instr = "IMPORTANT: You must respond with valid JSON only. No text before or after the JSON."
         final_system = f"{final_system}\n\n{json_instr}" if final_system else json_instr
 
-    # Anthropic requires at least one user message
+    # Anthropic requires at least one user message.
     if not non_system:
         non_system.append({"role": "user", "content": "Please proceed."})
 
-    # Anthropic requires alternating roles; merge consecutive same-role messages
+    # Anthropic requires alternating roles; merge consecutive same-role messages.
     merged = _merge_consecutive(non_system)
 
     kwargs = {
@@ -125,21 +156,45 @@ def _call_anthropic(system_prompt, messages, temperature, max_tokens, json_mode,
         "messages": merged,
         "temperature": temperature,
     }
-    if final_system:
-        kwargs["system"] = final_system
 
-    retry_delay = 10  # seconds; doubles each attempt, capped at 120s
+    # Build the system field.
+    # Callers may pass pre-structured content blocks (e.g. to split a large system
+    # prompt into a stable cached block and a dynamic per-request block).
+    # Otherwise, wrap the resolved system string in a single block marked for caching.
+    if system_blocks is not None:
+        # json_mode instruction must be appended to the last block's text if present.
+        if json_mode and system_blocks:
+            last = system_blocks[-1]
+            system_blocks = system_blocks[:-1] + [{
+                **last,
+                "text": last["text"] + "\n\nIMPORTANT: You must respond with valid JSON only. No text before or after the JSON.",
+            }]
+        kwargs["system"] = system_blocks
+    elif final_system:
+        kwargs["system"] = [
+            {
+                "type": "text",
+                "text": final_system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+    retry_delay = 10  # seconds; doubles each attempt, capped at 120 s
     for attempt in range(4):
         try:
             resp = client.messages.create(**kwargs)
             content = next((b.text for b in resp.content if b.type == "text"), "")
             if json_mode and content:
                 content = _strip_code_fences(content)
-            input_tokens = resp.usage.input_tokens if resp.usage else 0
-            output_tokens = resp.usage.output_tokens if resp.usage else 0
-            return content, input_tokens, output_tokens
+
+            input_tokens     = resp.usage.input_tokens if resp.usage else 0
+            output_tokens    = resp.usage.output_tokens if resp.usage else 0
+            cache_creation   = getattr(resp.usage, "cache_creation_input_tokens", 0) or 0
+            cache_read       = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
+
+            return content, input_tokens, output_tokens, cache_creation, cache_read
+
         except anthropic.RateLimitError as e:
-            # Honour the server's Retry-After header when present
             wait = retry_delay
             try:
                 ra = getattr(getattr(e, "response", None), "headers", {}).get("retry-after")
@@ -170,10 +225,8 @@ def _strip_code_fences(text):
     """
     text = text.strip()
     if text.startswith("```"):
-        # Remove the opening fence line (e.g. ```json\n or ```\n)
         newline = text.find("\n")
         text = text[newline + 1:] if newline != -1 else text[3:]
-        # Remove the closing fence
         if text.rstrip().endswith("```"):
             text = text.rstrip()[:-3].rstrip()
     return text

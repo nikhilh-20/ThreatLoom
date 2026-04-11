@@ -15,14 +15,15 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 ## Features
 
 - **Feed Aggregation** — Ingests from 61 pre-configured security feeds (The Hacker News, BleepingComputer, Krebs on Security, CISA, AWS, Cisco, Google, etc.) plus Malpedia research. LLM-based relevance filtering removes noise. Feeds are centrally managed in `config.json.example`.
-- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK. Supports OpenAI and Anthropic providers. Uses prompt caching to reduce token costs on repeated summaries.
+- **AI Summarization** — Produces structured summaries with executive overview, novelty assessment, technical details, mitigations, and 3-8 categorization tags aligned to MITRE ATT&CK. Supports OpenAI and Anthropic providers. Uses prompt caching with cost transparency: system prompt cached on first summarization, reused on subsequent articles. Cost breakdowns show input, cache write, cache read, and output token usage separately.
 - **Attack Flow Visualization** — Interactive kill chain timeline showing phase-by-phase attack sequences with MITRE tactic/technique mapping and progressive reveal.
 - **Semantic Search** — RAG-powered chat interface. Ask questions in natural language and get answers grounded in your article database with citation cards.
 - **Historical Trend Analysis** — Multi-pass LLM analysis generating quarter-by-quarter and year-by-year reports for each threat category, with cross-period correlation. Results are cached and displayed in collapsible panels.
-- **Trend Forecasting** — Category-level trend + 3-6 month forecast. Drill into specific threat actors, malware families, and offensive tooling. Cost estimate shown before generation; actual cost shown after.
+- **Trend Forecasting** — Category-level trend + 3-6 month forecast. Drill into specific threat actors, malware families, and offensive tooling. Cost estimate shown before generation with caching benefits factored in; actual cost shown after with full token breakdown (input, cache write, cache read, output).
 - **Time-Period Filter** — Filter the entire feed view and all category analysis by 24 h, 7 d, 30 d, or 90 d lookback with one click.
 - **Email Notifications** — Per-article email alerts or configurable digest summaries (daily or weekly) with the full structured analysis (executive summary, novelty, details, mitigations) and links to original sources. Configure any SMTP provider (Gmail, Outlook, SendGrid). Uses only Python stdlib — no extra dependencies.
 - **Pipeline Controls** — On-demand header buttons to trigger feed refresh (full or since last retrieval), generate embeddings for already-summarized articles, ingest specific article URLs without a full feed fetch, and abort a running pipeline between stages. Cost estimate shown before summarization; actual cost shown after.
+- **Failure Management** — Click failure stat cards (Unsummarized, Scrape Failed, Summary Failed) to view and batch reprocess articles that didn't complete a pipeline stage. Paginated modal with checkbox selection for targeted reprocessing.
 - **Automatic Categorization** — Articles are sorted into 9 threat categories (Malware, Vulnerabilities, Threat Actors, Phishing, Supply Chain, etc.) with entity-level subcategories for 300+ MITRE ATT&CK groups and software families.
 
 ## Requirements
@@ -215,6 +216,7 @@ RSS Feeds / Malpedia
  Scrape Article Content (trafilatura)
        |
  AI Summarization (structured JSON → markdown)
+       ↓ [prompt caching reduces cost: cache static system prompt, read from cache on repeated requests]
        |
  Email Notification (per article, if enabled)
        |
@@ -228,12 +230,27 @@ RSS Feeds / Malpedia
 1. **Fetch** — Download RSS/Atom entries from enabled feeds, filter by date, deduplicate by URL, batch-classify relevance via LLM
 2. **Malpedia** — Parse BibTeX bibliography, same relevance filtering (requires API key)
 3. **Scrape** — Download article HTML using browser-like headers, extract text with trafilatura (30s timeout per article)
-4. **Cost Gate** — Estimate API cost and prompt for confirmation before summarization; pipeline can be aborted here
-5. **Summarize** — Generate structured summary with executive overview, novelty, details, mitigations, tags, and attack flow (12,000 char input limit)
+4. **Cost Gate** — Estimate API cost (with prompt caching benefits) and prompt for confirmation before summarization; pipeline can be aborted here
+5. **Summarize** — Generate structured summary with executive overview, novelty, details, mitigations, tags, and attack flow (12,000 char input limit); uses prompt caching to reduce per-article token costs
 6. **Notify** — Send email alert with the full analysis for each summarized article (if enabled; failures never block the pipeline)
 7. **Embed** — Generate 1536-dim vectors for semantic search (batches of 50)
 
 Each stage only processes new/unprocessed articles. The pipeline is non-blocking — browse while it runs.
+
+### Prompt Caching & Cost Breakdown
+
+The app tracks four distinct token categories for accurate cost accounting:
+
+- **Input tokens** — non-cached input; billed at full input rate
+- **Cache write tokens** (Anthropic only) — tokens written to cache; billed at 1.25× input rate (5-minute TTL)
+- **Cache read tokens** (both providers) — tokens served from cache; billed at ~0.1× input rate
+- **Output tokens** — generated completions; billed at full output rate
+
+For example, when summarizing a batch of articles:
+- **Article 1:** System prompt (~4,500 tokens) written to cache → $0.0056 (cache write cost)
+- **Article 2–N:** System prompt served from cache → $0.00045 each (cache read cost)
+
+This caching strategy reduces per-article summarization costs by up to 85% after the first request.
 
 ## Project Structure
 
@@ -277,6 +294,8 @@ All endpoints return JSON. Base URL: `http://127.0.0.1:<port>`
 | GET | `/api/articles` | Paginated article list (params: `source_id`, `search`, `tag`, `page`, `limit`) |
 | GET | `/api/articles/<id>` | Single article with full summary |
 | GET | `/api/articles/categorized` | Articles grouped by threat category (params: `days`) |
+| GET | `/api/articles/failures` | Paginated failed articles (params: `type`, `page`, `limit`; types: `unsummarized`, `scrape_failed`, `failed_summaries`) |
+| POST | `/api/articles/reprocess` | Reprocess failed articles (body: `{"article_ids": [...], "failure_type": "..."}`) |
 | DELETE | `/api/articles/<id>/summary` | Remove an article's AI summary and embeddings |
 | GET | `/api/available-tags` | List all distinct tags present in the database |
 | PATCH | `/api/articles/<id>/tags` | Update the tags on a specific article (body: `{"tags": [...]}`) |
@@ -369,8 +388,8 @@ mkdocs gh-deploy
 | Web framework | Flask |
 | Feed parsing | feedparser (with socket timeout protection) |
 | Content extraction | trafilatura |
-| AI / LLM | OpenAI (GPT-4.1-mini/5-mini, text-embedding-3-small), Anthropic (Claude Haiku/Sonnet/Opus) |
-| LLM Optimization | Prompt caching (reduced token costs on repeated summaries) |
+| AI / LLM | OpenAI (GPT-4.1-mini/5-mini, text-embedding-3-small), Anthropic (Claude Haiku/Sonnet/Opus 4.x) |
+| LLM Optimization | Prompt caching with cost breakdown (input, cache write, cache read, output) |
 | Scheduling | APScheduler |
 | Database | SQLite (WAL mode) |
 | Vector search | numpy (cosine similarity) |

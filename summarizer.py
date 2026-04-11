@@ -161,14 +161,14 @@ def check_relevance(titles):
         prompt = RELEVANCE_PROMPT.format(titles=numbered)
 
         try:
-            content, it, ot = call_llm(
+            content, it, ot, cc, cr = call_llm(
                 None,
                 [{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=300,
                 json_mode=True,
             )
-            cost_tracker.add_tokens(it, ot)
+            cost_tracker.add_tokens(it, ot, cc, cr)
             data = json.loads(content)
             batch_results = data.get("relevant", [True] * len(batch))
             # Pad if the model returned fewer entries than expected
@@ -253,14 +253,14 @@ def summarize_article(title, content):
 
     for attempt in range(3):
         try:
-            content_str, it, ot = call_llm(
+            content_str, it, ot, cc, cr = call_llm(
                 SUMMARY_PROMPT,
                 [{"role": "user", "content": user_message}],
                 temperature=0.3,
                 max_tokens=2500,
                 json_mode=True,
             )
-            cost_tracker.add_tokens(it, ot)
+            cost_tracker.add_tokens(it, ot, cc, cr)
             result = json.loads(content_str)
             tags = result.get("tags", [])
             # The LLM decides network-traffic via a separate boolean field
@@ -410,14 +410,14 @@ def generate_category_insight(category_name, subcategory_tag=None, since_days=No
 
     for attempt in range(3):
         try:
-            content, it, ot = call_llm(
+            content, it, ot, cc, cr = call_llm(
                 prompt,
                 [{"role": "user", "content": user_message}],
                 temperature=0.4,
                 max_tokens=2000,
                 json_mode=True,
             )
-            cost_tracker.add_tokens(it, ot)
+            cost_tracker.add_tokens(it, ot, cc, cr)
             result = json.loads(content)
             return {
                 "trend": result.get("trend", ""),
@@ -557,14 +557,14 @@ def _summarize_batch(category_name, batch_text):
     """Condense a batch of article summaries via LLM. Returns trend string or None."""
     prompt = BATCH_SUMMARY_PROMPT.replace("{category}", category_name)
     try:
-        content, it, ot = call_llm(
+        content, it, ot, cc, cr = call_llm(
             prompt,
             [{"role": "user", "content": batch_text}],
             temperature=0.3,
             max_tokens=1500,
             json_mode=True,
         )
-        cost_tracker.add_tokens(it, ot)
+        cost_tracker.add_tokens(it, ot, cc, cr)
         data = json.loads(content)
         return data.get("trend")
     except Exception as e:
@@ -611,14 +611,14 @@ def _generate_quarterly_trend(category_name, quarter_label, article_count, summa
                   .replace("{period}", quarter_label)
                   .replace("{count}", str(article_count)))
     try:
-        content, it, ot = call_llm(
+        content, it, ot, cc, cr = call_llm(
             prompt,
             [{"role": "user", "content": f"Category: {category_name}\nPeriod: {quarter_label}\nArticle count: {article_count}\n\n{summary_text}"}],
             temperature=0.4,
             max_tokens=2500,
             json_mode=True,
         )
-        cost_tracker.add_tokens(it, ot)
+        cost_tracker.add_tokens(it, ot, cc, cr)
         return _format_trend_result(json.loads(content))
     except Exception as e:
         logger.error(f"Quarterly trend generation failed for {quarter_label}: {e}")
@@ -643,14 +643,14 @@ def _generate_yearly_trend(category_name, year, quarterly_trends, prev_year_tren
                   .replace("{year}", str(year))
                   .replace("{quarterly_summaries}", quarterly_summaries[:8000]))
     try:
-        content, it, ot = call_llm(
+        content, it, ot, cc, cr = call_llm(
             prompt,
             [{"role": "user", "content": f"Category: {category_name}\nYear: {year}\nQuarters covered: {len(quarterly_trends)}"}],
             temperature=0.4,
             max_tokens=3000,
             json_mode=True,
         )
-        cost_tracker.add_tokens(it, ot)
+        cost_tracker.add_tokens(it, ot, cc, cr)
         return _format_trend_result(json.loads(content))
     except Exception as e:
         logger.error(f"Yearly trend generation failed for {year}: {e}")
@@ -843,14 +843,14 @@ def synthesize_digest_story(cluster_articles):
 
     for attempt in range(3):
         try:
-            content_str, it, ot = call_llm(
+            content_str, it, ot, cc, cr = call_llm(
                 prompt,
                 [{"role": "user", "content": f"Synthesize these {len(cluster_articles)} articles into one digest story."}],
                 temperature=0.3,
                 max_tokens=2000,
                 json_mode=True,
             )
-            cost_tracker.add_tokens(it, ot)
+            cost_tracker.add_tokens(it, ot, cc, cr)
             result = json.loads(content_str)
             return {
                 "story_title": result.get("story_title", cluster_articles[0].get("title", "Security Story")),

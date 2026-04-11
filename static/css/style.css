@@ -170,6 +170,15 @@ a:hover {
     color: var(--text-muted);
 }
 
+.stat-item-clickable:hover {
+    background: var(--bg-hover);
+    border-radius: var(--radius-sm);
+}
+
+.stat-item-clickable:hover .stat-value {
+    color: var(--accent-blue);
+}
+
 /* === Main Content === */
 .main-content {
     flex: 1;

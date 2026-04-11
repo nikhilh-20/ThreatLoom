@@ -16,18 +16,21 @@ from database import (
     clear_database,
     delete_article_summary,
     get_article,
+    delete_failed_summaries,
     get_articles,
     get_articles_for_category,
     get_available_tags,
     get_categorized_articles,
     get_category_insight,
     get_embedding_stats,
+    get_failure_articles,
     get_sources,
     get_stats,
     get_subcategories,
     get_trend_analyses,
     init_db,
     insert_article,
+    reset_scrape_failed_articles,
     save_category_insight,
     update_article_tags,
     upsert_source,
@@ -138,6 +141,68 @@ def api_articles():
 
     articles = get_articles(source_id=source_id, search=search, tag=tag, page=page, limit=limit)
     return jsonify(articles)
+
+
+@app.route("/api/articles/failures")
+def api_article_failures():
+    """Return a paginated list of articles for a given failure type.
+
+    Query params:
+        type: 'unsummarized', 'scrape_failed', or 'failed_summaries'
+        page: page number (default 1)
+        limit: results per page (default 15, max 50)
+
+    Returns:
+        JSON with ``articles`` list and ``total`` count.
+    """
+    failure_type = request.args.get("type", "").strip()
+    valid_types = {"unsummarized", "scrape_failed", "failed_summaries"}
+    if failure_type not in valid_types:
+        return jsonify({"error": "Invalid type"}), 400
+
+    page = request.args.get("page", 1, type=int)
+    limit = request.args.get("limit", 15, type=int)
+    limit = min(limit, 50)
+
+    result = get_failure_articles(failure_type, page, limit)
+    return jsonify(result)
+
+
+@app.route("/api/articles/reprocess", methods=["POST"])
+def api_articles_reprocess():
+    """Reprocess a set of articles that failed at some pipeline stage.
+
+    Body JSON:
+        article_ids: list of integer article IDs (max 100)
+        failure_type: 'unsummarized', 'scrape_failed', or 'failed_summaries'
+
+    Returns:
+        JSON with ``status`` of 'started' or 'already_running'.
+    """
+    data = request.get_json(force=True) or {}
+    article_ids = data.get("article_ids", [])
+    failure_type = data.get("failure_type", "")
+
+    valid_types = {"unsummarized", "scrape_failed", "failed_summaries"}
+    if not article_ids or not isinstance(article_ids, list):
+        return jsonify({"error": "article_ids must be a non-empty list"}), 400
+    if len(article_ids) > 100:
+        return jsonify({"error": "Too many article IDs (max 100)"}), 400
+    if failure_type not in valid_types:
+        return jsonify({"error": "Invalid failure_type"}), 400
+
+    article_ids = [int(i) for i in article_ids]
+
+    if is_refreshing():
+        return jsonify({"status": "already_running"}), 409
+
+    if failure_type == "scrape_failed":
+        reset_scrape_failed_articles(article_ids)
+    elif failure_type == "failed_summaries":
+        delete_failed_summaries(article_ids)
+
+    trigger_process_pending(article_ids=article_ids)
+    return jsonify({"status": "started"})
 
 
 @app.route("/api/articles/<int:article_id>")
@@ -739,16 +804,18 @@ def api_trend_analysis():
     if len(articles) < 3:
         return jsonify({"error": "insufficient_data", "article_count": len(articles)})
 
-    pre_it, pre_cit, pre_ot = cost_tracker.get_tokens()
+    pre_it, pre_cc, pre_cr, pre_ot = cost_tracker.get_tokens()
     result = generate_trend_analysis(category, subcategory_tag=subcategory, since_days=since_days)
     if result is None:
         return jsonify({"error": "generation_failed"}), 500
 
-    post_it, post_cit, post_ot = cost_tracker.get_tokens()
-    inp_price, cached_price, out_price = _lookup_pricing(result["model_used"])
+    post_it, post_cc, post_cr, post_ot = cost_tracker.get_tokens()
+    inp_price, cache_read_price, out_price = _lookup_pricing(result["model_used"])
+    cache_write_price = inp_price * 1.25
     actual_cost = (
-        (post_it - pre_it) * inp_price
-        + (post_cit - pre_cit) * cached_price
+        (post_it - pre_it)  * inp_price
+        + (post_cc - pre_cc) * cache_write_price
+        + (post_cr - pre_cr) * cache_read_price
         + (post_ot - pre_ot) * out_price
     ) / 1_000_000
     result["actual_cost"] = actual_cost
@@ -819,16 +886,18 @@ def api_category_insight():
             })
 
     # Generate fresh insight, snapshot tokens to compute actual cost
-    pre_it, pre_cit, pre_ot = cost_tracker.get_tokens()
+    pre_it, pre_cc, pre_cr, pre_ot = cost_tracker.get_tokens()
     result = generate_category_insight(category, subcategory_tag=subcategory, since_days=since_days)
     if result is None:
         return jsonify({"error": "generation_failed"}), 500
 
-    post_it, post_cit, post_ot = cost_tracker.get_tokens()
-    inp_price, cached_price, out_price = _lookup_pricing(result["model_used"])
+    post_it, post_cc, post_cr, post_ot = cost_tracker.get_tokens()
+    inp_price, cache_read_price, out_price = _lookup_pricing(result["model_used"])
+    cache_write_price = inp_price * 1.25
     actual_cost = (
-        (post_it - pre_it) * inp_price
-        + (post_cit - pre_cit) * cached_price
+        (post_it - pre_it)  * inp_price
+        + (post_cc - pre_cc) * cache_write_price
+        + (post_cr - pre_cr) * cache_read_price
         + (post_ot - pre_ot) * out_price
     ) / 1_000_000
 

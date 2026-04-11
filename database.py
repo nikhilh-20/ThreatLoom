@@ -480,6 +480,101 @@ def get_scrape_failed_count():
     ).fetchone()["c"]
 
 
+def get_failure_articles(failure_type, page, limit):
+    """Return a paginated list of articles for a given failure type.
+
+    Args:
+        failure_type: One of 'unsummarized', 'scrape_failed', 'failed_summaries'.
+        page: 1-based page number.
+        limit: Number of results per page.
+
+    Returns:
+        Dict with keys ``articles`` (list of dicts) and ``total`` (int).
+    """
+    conn = get_connection()
+    offset = (page - 1) * limit
+
+    source_join = "LEFT JOIN sources s ON s.id = a.source_id "
+
+    if failure_type == "unsummarized":
+        base_where = (
+            "FROM articles a "
+            "LEFT JOIN summaries sm ON sm.article_id = a.id "
+            f"{source_join}"
+            "WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''"
+        )
+        total = conn.execute(f"SELECT COUNT(*) as c {base_where}").fetchone()["c"]
+        rows = conn.execute(
+            f"SELECT a.id, a.title, a.url, a.fetched_date, s.name as source_name {base_where} "
+            "ORDER BY a.fetched_date DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    elif failure_type == "scrape_failed":
+        total = conn.execute(
+            "SELECT COUNT(*) as c FROM articles WHERE content_raw = ''"
+        ).fetchone()["c"]
+        rows = conn.execute(
+            f"SELECT a.id, a.title, a.url, a.fetched_date, s.name as source_name "
+            f"FROM articles a {source_join}"
+            "WHERE a.content_raw = '' ORDER BY a.fetched_date DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    else:  # failed_summaries
+        base_where = (
+            "FROM articles a "
+            "JOIN summaries sm ON sm.article_id = a.id "
+            f"{source_join}"
+            "WHERE (sm.model_used = 'failed' OR sm.summary_text IS NULL OR sm.summary_text = '') "
+            "AND a.content_raw IS NOT NULL AND a.content_raw != ''"
+        )
+        total = conn.execute(f"SELECT COUNT(*) as c {base_where}").fetchone()["c"]
+        rows = conn.execute(
+            f"SELECT a.id, a.title, a.url, a.fetched_date, s.name as source_name {base_where} "
+            "ORDER BY a.fetched_date DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+
+    return {
+        "articles": [dict(r) for r in rows],
+        "total": total,
+    }
+
+
+def reset_scrape_failed_articles(article_ids):
+    """Reset content_raw to NULL for scrape-failed articles so they can be re-scraped.
+
+    Args:
+        article_ids: List of integer article IDs.
+    """
+    if not article_ids:
+        return
+    conn = get_connection()
+    placeholders = ",".join("?" * len(article_ids))
+    conn.execute(
+        f"UPDATE articles SET content_raw = NULL WHERE id IN ({placeholders})",
+        article_ids,
+    )
+    conn.commit()
+
+
+def delete_failed_summaries(article_ids):
+    """Delete failed summary rows so articles can be re-summarized.
+
+    Args:
+        article_ids: List of integer article IDs.
+    """
+    if not article_ids:
+        return
+    conn = get_connection()
+    placeholders = ",".join("?" * len(article_ids))
+    conn.execute(
+        f"DELETE FROM summaries WHERE article_id IN ({placeholders}) "
+        "AND (model_used = 'failed' OR summary_text IS NULL OR summary_text = '')",
+        article_ids,
+    )
+    conn.commit()
+
+
 def get_stats():
     """Compute aggregate statistics for the dashboard.
 

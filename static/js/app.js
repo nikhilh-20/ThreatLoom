@@ -1629,3 +1629,121 @@ async function testEmail() {
         btn.classList.remove('loading');
     }
 }
+
+// === Failure Articles Modal ===
+
+let _failureModalType = null;
+let _failureModalPage = 1;
+let _failureModalTotal = 0;
+const FAILURE_MODAL_LIMIT = 15;
+
+function openFailureModal(type, title) {
+    _failureModalType = type;
+    _failureModalPage = 1;
+    _failureModalTotal = 0;
+    const modal = document.getElementById('failure-modal');
+    const titleEl = document.getElementById('failure-modal-title');
+    if (titleEl) titleEl.textContent = title;
+    if (modal) modal.style.display = 'flex';
+    loadFailureModalPage();
+}
+
+function closeFailureModal() {
+    const modal = document.getElementById('failure-modal');
+    if (modal) modal.style.display = 'none';
+    _failureModalType = null;
+}
+
+async function loadFailureModalPage() {
+    const listEl = document.getElementById('failure-modal-list');
+    const pageLabel = document.getElementById('failure-page-label');
+    const prevBtn = document.getElementById('failure-prev-btn');
+    const nextBtn = document.getElementById('failure-next-btn');
+    const reprocessBtn = document.getElementById('failure-reprocess-btn');
+
+    if (listEl) listEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Loading...</span>';
+    if (reprocessBtn) reprocessBtn.disabled = true;
+
+    try {
+        const resp = await fetch(
+            `/api/articles/failures?type=${encodeURIComponent(_failureModalType)}&page=${_failureModalPage}&limit=${FAILURE_MODAL_LIMIT}`
+        );
+        if (!resp.ok) throw new Error('Request failed');
+        const data = await resp.json();
+        _failureModalTotal = data.total || 0;
+
+        if (!listEl) return;
+
+        if (!data.articles || data.articles.length === 0) {
+            listEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">No articles found.</span>';
+        } else {
+            listEl.innerHTML = data.articles.map(a => `
+                <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light);cursor:pointer">
+                    <input type="checkbox" class="failure-cb" value="${a.id}" style="margin-top:3px;flex-shrink:0">
+                    <span style="min-width:0">
+                        <a href="${escHtml(a.url)}" target="_blank" rel="noopener"
+                           style="font-size:0.88rem;color:var(--accent-blue);word-break:break-word;text-decoration:none">
+                            ${escHtml(a.title || a.url)}
+                        </a>
+                        ${a.source_name ? `<span style="display:block;font-size:0.78rem;color:var(--text-muted);margin-top:2px">${escHtml(a.source_name)}</span>` : ''}
+                    </span>
+                </label>`).join('');
+
+            listEl.onchange = () => {
+                const anyChecked = listEl.querySelectorAll('.failure-cb:checked').length > 0;
+                if (reprocessBtn) reprocessBtn.disabled = !anyChecked;
+            };
+        }
+
+        const totalPages = Math.max(1, Math.ceil(_failureModalTotal / FAILURE_MODAL_LIMIT));
+        if (pageLabel) pageLabel.textContent = `Page ${_failureModalPage} of ${totalPages} (${_failureModalTotal} total)`;
+        if (prevBtn) prevBtn.disabled = _failureModalPage <= 1;
+        if (nextBtn) nextBtn.disabled = _failureModalPage >= totalPages;
+    } catch (e) {
+        if (listEl) listEl.innerHTML = '<span style="color:var(--error-color);font-size:0.85rem">Failed to load articles.</span>';
+    }
+}
+
+function failurePageChange(delta) {
+    const totalPages = Math.max(1, Math.ceil(_failureModalTotal / FAILURE_MODAL_LIMIT));
+    _failureModalPage = Math.max(1, Math.min(totalPages, _failureModalPage + delta));
+    loadFailureModalPage();
+}
+
+async function reprocessSelected() {
+    const listEl = document.getElementById('failure-modal-list');
+    const reprocessBtn = document.getElementById('failure-reprocess-btn');
+    if (!listEl) return;
+
+    const checked = [...listEl.querySelectorAll('.failure-cb:checked')].map(cb => parseInt(cb.value, 10));
+    if (checked.length === 0) return;
+
+    if (reprocessBtn) {
+        reprocessBtn.disabled = true;
+        reprocessBtn.textContent = 'Processing...';
+    }
+
+    try {
+        const resp = await fetch('/api/articles/reprocess', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ article_ids: checked, failure_type: _failureModalType }),
+        });
+        const data = await resp.json();
+
+        if (data.status === 'already_running') {
+            alert('Pipeline is already running. Please wait for it to finish and try again.');
+        } else {
+            loadStats();
+            pollRefreshStatus();
+            setTimeout(() => loadFailureModalPage(), 500);
+        }
+    } catch (e) {
+        alert('Reprocess request failed: ' + e.message);
+    }
+
+    if (reprocessBtn) {
+        reprocessBtn.disabled = false;
+        reprocessBtn.textContent = 'Re-process Selected';
+    }
+}

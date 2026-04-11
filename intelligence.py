@@ -200,21 +200,36 @@ def chat(messages, top_k=15, since_days=None):
     # Build context from retrieved articles
     context = _build_context(articles)
 
-    # Build conversation messages (system content passed separately to call_llm)
-    combined_system = f"{SYSTEM_PROMPT}\n\nRETRIEVED ARTICLES:\n\n{context}"
+    # Split system into two blocks so the static instructions and the dynamic
+    # article context can each be cached independently by the Anthropic API.
+    # SYSTEM_PROMPT uses a 1-hour TTL (it never changes across sessions).
+    # The retrieved-articles block uses the default 5-minute TTL (changes per query).
+    system_blocks = [
+        {
+            "type": "text",
+            "text": SYSTEM_PROMPT,
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        },
+        {
+            "type": "text",
+            "text": f"RETRIEVED ARTICLES:\n\n{context}",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
 
     # Add last N conversation messages for follow-up context (user/assistant only)
     recent = [m for m in messages[-MAX_CONVERSATION_MESSAGES:] if m.get("role") in ("user", "assistant")]
 
     for attempt in range(3):
         try:
-            answer, it, ot = call_llm(
-                combined_system,
+            answer, it, ot, cc, cr = call_llm(
+                None,
                 recent,
                 temperature=0.3,
                 max_tokens=2000,
+                system_blocks=system_blocks,
             )
-            cost_tracker.add_tokens(it, ot)
+            cost_tracker.add_tokens(it, ot, cc, cr)
             return {
                 "response": answer,
                 "articles": articles,

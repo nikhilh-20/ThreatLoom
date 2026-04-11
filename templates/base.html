@@ -44,15 +44,15 @@
                     <span class="stat-label">Summaries</span>
                     <span class="stat-value" id="stat-summaries">--</span>
                 </div>
-                <div class="stat-item" id="stat-item-unsummarized" style="display:none">
+                <div class="stat-item stat-item-clickable" id="stat-item-unsummarized" style="display:none;cursor:pointer" onclick="openFailureModal('unsummarized', 'Unsummarized Articles')">
                     <span class="stat-label">Unsummarized</span>
                     <span class="stat-value" id="stat-unsummarized"></span>
                 </div>
-                <div class="stat-item" id="stat-item-scrape-failed" style="display:none">
+                <div class="stat-item stat-item-clickable" id="stat-item-scrape-failed" style="display:none;cursor:pointer" onclick="openFailureModal('scrape_failed', 'Scrape Failed Articles')">
                     <span class="stat-label">Scrape failed</span>
                     <span class="stat-value" id="stat-scrape-failed"></span>
                 </div>
-                <div class="stat-item" id="stat-item-failed-summaries" style="display:none">
+                <div class="stat-item stat-item-clickable" id="stat-item-failed-summaries" style="display:none;cursor:pointer" onclick="openFailureModal('failed_summaries', 'Summary Failed Articles')">
                     <span class="stat-label">Summary failed</span>
                     <span class="stat-value" id="stat-failed-summaries"></span>
                 </div>
@@ -164,6 +164,23 @@
             <div class="modal-actions">
                 <button class="btn btn-primary" id="ingest-submit-btn" onclick="ingestUrls()">Process</button>
                 <button class="btn btn-secondary" onclick="hideIngestDialog()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Failure Articles Modal -->
+    <div class="modal-overlay" id="failure-modal" style="display:none">
+        <div class="modal-dialog" style="max-width:640px;width:100%">
+            <h3 class="modal-title" id="failure-modal-title">Articles</h3>
+            <div id="failure-modal-list" style="margin-bottom:12px;max-height:380px;overflow-y:auto;"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:0.85rem;color:var(--text-secondary)">
+                <button class="btn btn-secondary" id="failure-prev-btn" onclick="failurePageChange(-1)">&#8592; Prev</button>
+                <span id="failure-page-label"></span>
+                <button class="btn btn-secondary" id="failure-next-btn" onclick="failurePageChange(1)">Next &#8594;</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="failure-reprocess-btn" onclick="reprocessSelected()" disabled>Re-process Selected</button>
+                <button class="btn btn-secondary" onclick="closeFailureModal()">Close</button>
             </div>
         </div>
     </div>
