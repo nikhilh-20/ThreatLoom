@@ -318,9 +318,26 @@ Use markdown formatting (headings, bold, bullet lists) to make the text scannabl
 Be specific and cite patterns you observe in the provided articles.
 Respond ONLY with valid JSON."""
 
+TREND_FORECAST_REFINE_PROMPT = """You are a senior cybersecurity threat-intelligence strategist.
+
+You previously analyzed a subset of "{category}" articles and produced the analysis below.
+You are now given additional articles not yet reflected in that analysis.
+
+Update and refine both outputs to incorporate the new information. Keep the same structure
+and depth — update only what the new articles change or add.
+
+CURRENT TREND ANALYSIS:
+{current_trend}
+
+CURRENT FORECAST:
+{current_forecast}
+
+Produce a JSON object with exactly two keys: "trend" and "forecast".
+Respond ONLY with valid JSON."""
+
 
 def estimate_insight_cost(article_count, model):
-    """Estimate the LLM cost for a single category insight (forecast) call.
+    """Estimate the LLM cost for an iterative category insight (forecast) run.
 
     Args:
         article_count: Number of articles that will be included.
@@ -329,11 +346,20 @@ def estimate_insight_cost(article_count, model):
     Returns:
         Estimated cost in USD as a float.
     """
+    import math
     from cost_tracker import _lookup_pricing
     inp_price, _cached_price, out_price = _lookup_pricing(model)
-    # ~200 tokens per article for exec-summary context, capped at 5000, plus ~200 system tokens
-    estimated_input = min(article_count * 200, 5000) + 200
-    return (estimated_input * inp_price + 2000 * out_price) / 1_000_000
+    # ~300 chars per article line (title + date + 500-char exec summary extract)
+    total_chars = article_count * 300
+    n_chunks = max(1, math.ceil(total_chars / _INSIGHT_CHUNK_CHARS))
+    tokens_per_chunk = _INSIGHT_CHUNK_CHARS // 4  # ~4 chars per token
+    prompt_overhead = 200
+    prev_analysis_tokens = 500  # trend + forecast carried forward as context
+    first_input = tokens_per_chunk + prompt_overhead
+    refine_input = (tokens_per_chunk + prev_analysis_tokens + prompt_overhead) * (n_chunks - 1)
+    total_input = first_input + refine_input
+    total_output = 2000 * n_chunks
+    return (total_input * inp_price + total_output * out_price) / 1_000_000
 
 
 def estimate_trend_cost(articles, model):
@@ -357,6 +383,85 @@ def estimate_trend_cost(articles, model):
     total_output = n_quarters * 2500 + n_years * 3000 + n_batches * 1500
     cost = (total_input * inp_price + total_output * out_price) / 1_000_000
     return cost, n_quarters, n_years
+
+
+def _iterative_insight_analysis(lines, context_label, article_count):
+    """Analyze article lines iteratively in ~10k-char chunks, carrying analysis forward.
+
+    Splits the article lines into chunks of at most ``_INSIGHT_CHUNK_CHARS``
+    characters. The first chunk is analyzed with ``TREND_FORECAST_PROMPT``; each
+    subsequent chunk is processed with ``TREND_FORECAST_REFINE_PROMPT``, which
+    receives the previous analysis as context so no data is discarded.
+
+    Args:
+        lines: List of formatted article strings (title + date + exec summary).
+        context_label: Category/subcategory display name for prompts.
+        article_count: Total article count for the user message header.
+
+    Returns:
+        dict with ``trend`` and ``forecast`` keys, or ``None`` on failure.
+    """
+    # Split lines into chunks of at most _INSIGHT_CHUNK_CHARS chars
+    chunks, current, current_len = [], [], 0
+    for line in lines:
+        line_len = len(line) + 1  # +1 for the joining newline
+        if current and current_len + line_len > _INSIGHT_CHUNK_CHARS:
+            chunks.append("\n".join(current))
+            current, current_len = [line], line_len
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
+
+    if not chunks:
+        return None
+
+    analysis = None
+
+    for i, chunk in enumerate(chunks):
+        if i == 0:
+            system_prompt = TREND_FORECAST_PROMPT.format(category=context_label)
+            user_message = (
+                f"Category: {context_label}\nArticle count: {article_count}\n\n{chunk}"
+            )
+        else:
+            system_prompt = TREND_FORECAST_REFINE_PROMPT.format(
+                category=context_label,
+                current_trend=analysis["trend"],
+                current_forecast=analysis["forecast"],
+            )
+            user_message = f"Additional articles (batch {i + 1} of {len(chunks)}):\n\n{chunk}"
+
+        for attempt in range(3):
+            try:
+                content, it, ot, cc, cr = call_llm(
+                    system_prompt,
+                    [{"role": "user", "content": user_message}],
+                    temperature=0.4,
+                    max_tokens=2000,
+                    json_mode=True,
+                )
+                cost_tracker.add_tokens(it, ot, cc, cr)
+                parsed = json.loads(content)
+                analysis = {
+                    "trend": parsed.get("trend", ""),
+                    "forecast": parsed.get("forecast", ""),
+                }
+                break
+            except Exception as e:
+                if _is_rate_limit_error(e):
+                    wait = 2 ** (attempt + 1)
+                    logger.warning(f"Rate limited, waiting {wait}s before retry")
+                    time.sleep(wait)
+                elif attempt < 2:
+                    logger.error(f"Insight generation error chunk {i + 1}, attempt {attempt + 1}: {e}")
+                    time.sleep(1)
+                else:
+                    logger.error(f"All retries failed on chunk {i + 1}: {e}")
+                    return None
+
+    return analysis
 
 
 def generate_category_insight(category_name, subcategory_tag=None, since_days=None):
@@ -401,44 +506,16 @@ def generate_category_insight(category_name, subcategory_tag=None, since_days=No
         exec_match = match.group(1).strip() if match else summary[:500]
         lines.append(f"- **{art['title']}** ({date_str}): {exec_match}")
 
-    input_text = "\n".join(lines)
-    if len(input_text) > 20000:
-        input_text = input_text[:20000] + "\n\n[Truncated...]"
+    analysis = _iterative_insight_analysis(lines, context_label, len(articles))
+    if analysis is None:
+        return None
 
-    prompt = TREND_FORECAST_PROMPT.format(category=context_label)
-    user_message = f"Category: {context_label}\nArticle count: {len(articles)}\n\n{input_text}"
-
-    for attempt in range(3):
-        try:
-            content, it, ot, cc, cr = call_llm(
-                prompt,
-                [{"role": "user", "content": user_message}],
-                temperature=0.4,
-                max_tokens=2000,
-                json_mode=True,
-            )
-            cost_tracker.add_tokens(it, ot, cc, cr)
-            result = json.loads(content)
-            return {
-                "trend": result.get("trend", ""),
-                "forecast": result.get("forecast", ""),
-                "article_count": len(articles),
-                "model_used": get_model_name(),
-            }
-
-        except Exception as e:
-            if _is_rate_limit_error(e):
-                wait = 2 ** (attempt + 1)
-                logger.warning(f"Rate limited, waiting {wait}s before retry")
-                time.sleep(wait)
-            elif attempt < 2:
-                logger.error(f"Insight generation error (attempt {attempt + 1}): {e}")
-                time.sleep(1)
-            else:
-                logger.error(f"All insight generation retries failed: {e}")
-                return None
-
-    return None
+    return {
+        "trend": analysis["trend"],
+        "forecast": analysis["forecast"],
+        "article_count": len(articles),
+        "model_used": get_model_name(),
+    }
 
 
 # ============================================================
@@ -504,6 +581,7 @@ Respond ONLY with valid JSON."""
 _EXEC_SUMMARY_RE = re.compile(r"# Executive Summary\s*\n([\s\S]*?)(?=\n#|\n*$)", re.IGNORECASE)
 _TREND_BATCH_SIZE = 50
 _TREND_MAX_SUMMARY_CHARS = 300
+_INSIGHT_CHUNK_CHARS = 10_000
 
 
 def _group_by_quarter(articles):
