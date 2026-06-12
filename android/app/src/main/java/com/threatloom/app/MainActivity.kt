@@ -246,7 +246,7 @@ fun MainScreen(appEvent: AppEvent) {
                     }
                     NavigationBarItem(
                         modifier = Modifier,
-                        icon = { Icon(Icons.Default.LocalCafe, contentDescription = "Support on BuyMeACoffee") },
+                        icon = { Icon(Icons.Default.LocalCafe, contentDescription = "Support on Ko-fi") },
                         label = { Text("Coffee") },
                         selected = false,
                         onClick = { showSupportDialog = true },
@@ -273,7 +273,7 @@ fun MainScreen(appEvent: AppEvent) {
             title = { Text("Support the Developer") },
             text = {
                 Text(
-                    "You'll be taken to buymeacoffee.com/nikhilh.20 — " +
+                    "You'll be taken to ko-fi.com/nikhilh20 — " +
                     "an external platform where you can support this project. " +
                     "Thank you! ☕"
                 )
@@ -282,9 +282,9 @@ fun MainScreen(appEvent: AppEvent) {
                 TextButton(onClick = {
                     showSupportDialog = false
                     context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/nikhilh.20"))
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://ko-fi.com/nikhilh20"))
                     )
-                }) { Text("Open BuyMeACoffee") }
+                }) { Text("Open Ko-fi") }
             },
             dismissButton = {
                 TextButton(onClick = { showSupportDialog = false }) { Text("Maybe Later") }
