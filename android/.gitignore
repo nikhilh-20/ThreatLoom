@@ -1,0 +1,71 @@
+# Built application files
+*.apk
+*.aar
+*.aab
+*.ap_
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+build/
+
+# Gradle files
+.gradle/
+local.properties
+
+# Local configuration file (sdk path, etc.)
+# This file should NOT be checked into VCS
+# See: http://tools.android.com/tips/non-constant-fields
+
+# Android Studio / IntelliJ
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/caches
+.idea/modules.xml
+.idea/.name
+.idea/compiler.xml
+.idea/copyright
+.idea/encodings.xml
+.idea/misc.xml
+.idea/modules
+.idea/runConfigurations
+.idea/vcs.xml
+# Keep .idea/gitignore files if present
+
+# Keystore files — NEVER commit signing keys
+*.jks
+*.keystore
+keystore/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V7
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+
+# Android Profiling
+*.hprof
+
+# ProGuard mapping files (keep locally; do not publish)
+mapping.txt
+seeds.txt
+usage.txt

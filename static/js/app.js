@@ -26,7 +26,7 @@ function debounce(fn, ms) {
 // === Stats ===
 async function loadStats() {
     try {
-        const res = await fetch('/api/stats');
+        const res = await fetch('/api/stats', { cache: 'no-store' });
         const data = await res.json();
         const el = (id) => document.getElementById(id);
         if (el('stat-articles')) el('stat-articles').textContent = data.total_articles;
@@ -896,6 +896,18 @@ async function refreshSinceLastRetrieval() {
     }
 }
 
+// Shared stage labels used by both active polling and resume-on-load.
+const REFRESH_STAGE_LABELS = {
+    fetch: 'Fetching articles...',
+    scrape: 'Scraping article content...',
+    confirm: 'Waiting for cost confirmation...',
+    summarize: 'Summarizing articles...',
+    embed: 'Generating embeddings...',
+    done: 'Refresh complete!',
+    aborted: 'Stopped.',
+    error: 'Pipeline error',
+};
+
 function pollRefreshStatus(btn, status) {
     // Normalize btn to an array so callers can pass a single element or a NodeList
     const btns = btn ? (btn.forEach ? btn : [btn]) : [];
@@ -905,16 +917,7 @@ function pollRefreshStatus(btn, status) {
     const POLL_INTERVAL = 3000;
     const startTime = Date.now();
 
-    const stageLabels = {
-        fetch: 'Fetching articles...',
-        scrape: 'Scraping article content...',
-        confirm: 'Waiting for cost confirmation...',
-        summarize: 'Summarizing articles...',
-        embed: 'Generating embeddings...',
-        done: 'Refresh complete!',
-        aborted: 'Stopped.',
-        error: 'Pipeline error',
-    };
+    const stageLabels = REFRESH_STAGE_LABELS;
 
     const abortBtn = document.getElementById('abort-btn');
     const embedBtn = document.getElementById('embed-btn');
@@ -980,6 +983,40 @@ function pollRefreshStatus(btn, status) {
             resetBtns();
         }
     }, POLL_INTERVAL);
+}
+
+// On page load, restore the UI for a refresh that's already running on the server
+// (e.g. the user started one, navigated away, and came back).
+async function resumeRefreshIfActive() {
+    try {
+        const res = await fetch('/api/refresh-status');
+        const data = await res.json();
+
+        if (data.is_refreshing) {
+            const btn = document.getElementById('refresh-btn') || document.getElementById('manual-refresh-btn');
+            const sinceBtns = document.querySelectorAll('.refresh-since-btn');
+            const status = document.getElementById('refresh-status') || document.getElementById('settings-refresh-status');
+
+            const allBtns = [];
+            if (btn) allBtns.push(btn);
+            sinceBtns.forEach(b => allBtns.push(b));
+            allBtns.forEach(b => { b.disabled = true; b.classList.add('loading'); });
+            if (status) {
+                status.textContent = REFRESH_STAGE_LABELS[data.stage] || 'Refreshing...';
+                status.className = 'refresh-status';
+            }
+
+            // Reuse the existing poller: it re-shows the abort button, the cost-estimate
+            // and actual-cost modals, advances the stage label, and resets the buttons.
+            pollRefreshStatus(allBtns, status);
+        } else if (data.cost_estimate) {
+            showCostEstimateModal(data.cost_estimate);
+        } else if (data.actual_cost) {
+            showActualCostModal(data.actual_cost);
+        }
+    } catch (e) {
+        // Never let a failed status check break page load.
+    }
 }
 
 // === Cost Confirmation Modals ===
@@ -1167,9 +1204,9 @@ function saveSettings() {
     const settings = {
         llm_provider: llmProvider ? llmProvider.value : 'openai',
         openai_api_key: effectiveOpenAiKey,
-        openai_model: model ? model.value : 'gpt-5-mini',
+        openai_model: model ? model.value : 'gpt-5.4-nano',
         anthropic_api_key: anthropicKey ? anthropicKey.value : '',
-        anthropic_model: anthropicModel ? anthropicModel.value : 'claude-3-5-haiku-20241022',
+        anthropic_model: anthropicModel ? anthropicModel.value : 'claude-haiku-4-5-20251001',
         malpedia_api_key: malpediaKey ? malpediaKey.value : '',
         fetch_interval_minutes: interval ? parseInt(interval.value) : 30,
         feeds: feeds,

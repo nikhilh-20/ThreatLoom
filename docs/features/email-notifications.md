@@ -97,20 +97,9 @@ Each notification email includes:
 - **Details** — technical findings, IOCs, CVEs, timelines
 - **Mitigations** — actionable defensive recommendations
 
-## Environment Variables
+## Configuration
 
-For Docker deployments, SMTP settings can be configured via environment variables in `docker-compose.yml`:
-
-```yaml
-environment:
-  - SMTP_HOST=smtp.gmail.com
-  - SMTP_PORT=587
-  - SMTP_USERNAME=you@gmail.com
-  - SMTP_PASSWORD=your-app-password
-  - NOTIFICATION_EMAIL=you@gmail.com
-```
-
-Setting `NOTIFICATION_EMAIL` automatically enables email notifications.
+SMTP settings (host, port, username, password) and the notification recipient are configured on the **Settings** page of the web UI and stored in `data/config.json`. This applies to both standalone and Docker deployments — the config persists on the bind-mounted `./data` directory, so it does not need to be re-entered after a container restart. SMTP settings are not read from environment variables.
 
 ## Behavior Notes
 

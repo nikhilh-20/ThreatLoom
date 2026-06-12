@@ -73,13 +73,13 @@ You can configure the key in two ways:
 ```json
 {
   "openai_api_key": "sk-proj-your-key-here",
-  "openai_model": "gpt-4o-mini",
+  "openai_model": "gpt-5.4-nano",
   "fetch_interval_minutes": 30
 }
 ```
 
 !!! tip "Model Selection"
-    `gpt-4o-mini` is the default — fast and cost-effective. Use `gpt-4o` for higher quality summaries and insights. See [Configuration](configuration.md) for all model options.
+    `gpt-5.4-nano` is the default — fast and cost-effective. Use `gpt-5-mini` for higher quality summaries and insights. See [Configuration](configuration.md) for all model options.
 
 ### Malpedia API Key (Optional)
 
@@ -99,48 +99,26 @@ If you prefer running Threat Loom in a container, Docker is the quickest way to 
 
 ### Quick Start
 
-The recommended approach is to set your API keys directly in `docker-compose.yml` under the `environment` section:
-
-```yaml
-environment:
-  - OPENAI_API_KEY=sk-proj-your-key-here
-  - ANTHROPIC_API_KEY=sk-ant-your-key-here   # required if using Anthropic provider
-  - LLM_PROVIDER=anthropic                    # omit to default to openai
-```
-
-Then start the container:
+Start the container:
 
 ```bash
 docker compose up
 ```
 
-!!! warning "Placeholder values override Settings"
-    Every non-empty value in the `environment` block overrides `data/config.json`. If you leave a placeholder like `your-api-key-here` in place of an actual key, it will overwrite any key you configured via the Settings UI. Either fill in a real key or remove the line entirely.
+The app will be available at **http://localhost:5000**. Open the **Settings** page and enter your API keys (OpenAI / Anthropic / Malpedia) and, optionally, SMTP details for email alerts. These are saved to `data/config.json`, which persists on the bind-mounted `./data` directory (see [Data Persistence](#data-persistence) below).
 
-Alternatively, pass keys inline for a one-off run:
-
-```bash
-OPENAI_API_KEY=sk-proj-your-key-here docker compose up
-```
-
-The app will be available at **http://localhost:5000**.
+!!! note "Secrets are configured in the UI, not the environment"
+    API keys, SMTP settings, and the notification recipient are **only** read from `data/config.json` (via the Settings page) — they are not read from environment variables, so secrets never need to live in `docker-compose.yml`, `.env`, or the process environment.
 
 ### Environment Variables
 
+Only non-secret runtime settings are read from the environment (or an optional `.env` file copied from `.env.example`):
+
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`). Always required for embeddings. |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (overrides `config.json`). Required when `LLM_PROVIDER=anthropic`. |
-| `LLM_PROVIDER` | `openai` | Active LLM provider: `openai` or `anthropic` (overrides `config.json`). |
-| `MALPEDIA_API_KEY` | — | Optional Malpedia API key |
 | `HOST` | `0.0.0.0` | Bind address (set by Dockerfile) |
 | `PORT` | `5000` | Listen port |
 | `DATA_DIR` | `./data` (standalone) or `/app/data` (Docker) | Directory for `config.json` and `threatlandscape.db` |
-| `SMTP_HOST` | — | SMTP server hostname (e.g. `smtp.gmail.com`) |
-| `SMTP_PORT` | `587` | SMTP server port |
-| `SMTP_USERNAME` | — | SMTP login username |
-| `SMTP_PASSWORD` | — | SMTP login password or app password |
-| `NOTIFICATION_EMAIL` | — | Recipient email address (auto-enables notifications when set) |
 
 ### Data Persistence
 

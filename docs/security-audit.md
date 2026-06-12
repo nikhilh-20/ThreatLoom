@@ -181,7 +181,7 @@ rows = conn.execute(
 | config.py:54 | Low | Medium | `"smtp_password": ""` |
 | config.py:58 | Low | Medium | `"report_token": ""` |
 
-**Analysis:** Both flags are empty string defaults in the configuration template. Neither contains an actual credential — both are placeholders that prompt the user to configure their own value. Real values are stored in `data/config.json` (excluded from git and Docker image) or passed via environment variables. Unchanged from previous audit.
+**Analysis:** Both flags are empty string defaults in the configuration template. Neither contains an actual credential — both are placeholders that prompt the user to configure their own value. Real values are stored only in `data/config.json` (excluded from git and Docker image) and configured through the Settings page; secrets are not read from environment variables. Unchanged from previous audit.
 
 **Verdict:** False positives. No fix required.
 
@@ -265,10 +265,10 @@ The scan checks for:
 
 **Design notes:**
 
-- API keys and SMTP credentials are stored in `data/config.json` (excluded from Docker image via `.dockerignore`) or passed via environment variables
+- API keys and SMTP credentials are stored only in `data/config.json` (excluded from the Docker image via `.dockerignore`) and configured through the Settings page; they are deliberately not read from environment variables, so secrets never enter the process environment
 - No secrets are hardcoded in source code
 - The `config.json` template in docs uses placeholder values (`sk-proj-your-key-here`)
-- SMTP passwords are stored in plaintext in `config.json`, consistent with the existing pattern for API keys. For Docker deployments, prefer environment variables (`SMTP_PASSWORD`)
+- SMTP passwords are stored in plaintext in `config.json`, consistent with the existing pattern for API keys
 
 ---
 
@@ -346,7 +346,7 @@ Docker Scout recommends `python:3.14-alpine` as an alternative base image, which
 - [x] Upgrade pip in Dockerfile to fix CVE-2026-1703
 - [x] Run container as non-root user
 - [x] Exclude secrets and data files from Docker image via `.dockerignore`
-- [x] Support API keys via environment variables (no hardcoding needed)
+- [x] Store API keys only in `data/config.json` (no hardcoding, not read from the process environment)
 - [x] Validate feed URLs (http/https only) client-side and server-side before saving
 - [x] Validate article URLs before rendering as `href` links (prevent `javascript:` / `data:` injection)
 

@@ -969,6 +969,9 @@ details[open] > .trend-period-summary::before {
 
 .expanded-summary {
     margin-bottom: 12px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.7;
 }
 
 .expanded-summary .markdown-body h1,

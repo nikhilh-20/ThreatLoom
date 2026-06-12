@@ -64,6 +64,14 @@ logging.basicConfig(
 app = Flask(__name__)
 
 
+@app.after_request
+def add_no_cache_headers(response):
+    """Prevent browsers from serving stale JSON for dynamic API endpoints."""
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
 # === Page Routes ===
 
 @app.route("/")

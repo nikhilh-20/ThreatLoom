@@ -22,7 +22,7 @@ def get_model_name():
     provider = config.get("llm_provider", "openai")
     if provider == "anthropic":
         return config.get("anthropic_model", "claude-haiku-4-5-20251001")
-    return config.get("openai_model", "gpt-4.1-mini")
+    return config.get("openai_model", "gpt-5.4-nano")
 
 
 def call_llm(system_prompt, messages, temperature=0.3, max_tokens=2000,
@@ -64,7 +64,7 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode,
     from openai import OpenAI
 
     api_key = config.get("openai_api_key", "").strip()
-    model = config.get("openai_model", "gpt-4.1-mini")
+    model = config.get("openai_model", "gpt-5.4-nano")
     client = OpenAI(api_key=api_key)
 
     # Resolve system text: prefer system_blocks (join text fields), else system_prompt.
@@ -98,9 +98,10 @@ def _call_openai(system_prompt, messages, temperature, max_tokens, json_mode,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-    if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
 
+    logger.debug("OpenAI request: model=%s params=%s", model, list(kwargs.keys()))
     resp = client.chat.completions.create(**kwargs)
     content = resp.choices[0].message.content
     prompt_tokens = resp.usage.prompt_tokens if resp.usage else 0

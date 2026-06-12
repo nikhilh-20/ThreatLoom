@@ -8,11 +8,11 @@ import threading
 _PRICING = {
     # OpenAI
     "gpt-5-mini":    (0.25, 0.025,  2.00),
-    "gpt-4.1-mini":  (0.40, 0.10,   1.60),
+    "gpt-5.4-nano":  (0.20, 0.020,  1.25),
+
     # Anthropic — Claude 4.x
     "claude-haiku":  (1.00, 0.10,   5.00),   # Haiku 4.5
     "claude-sonnet": (3.00, 0.30,  15.00),   # Sonnet 4.6
-    "claude-opus":   (5.00, 0.50,  25.00),   # Opus 4.6
 }
 
 

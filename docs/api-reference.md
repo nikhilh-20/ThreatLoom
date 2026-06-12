@@ -78,7 +78,7 @@ Fetch a single article with its full summary.
   "key_points": "[{\"phase\": \"Initial Access\", ...}]",
   "tags": ["ransomware", "healthcare"],
   "novelty_notes": "First observed use of...",
-  "model_used": "gpt-4.1-mini",
+  "model_used": "gpt-5.4-nano",
   "image_url": "https://example.com/image.jpg"
 }
 ```
@@ -515,7 +515,7 @@ Generate or retrieve a cached trend + forecast for a category.
   "trend": "## Trend Analysis\n\nOver the past several months...",
   "forecast": "## Forecast\n\nLooking ahead 3-6 months...",
   "article_count": 42,
-  "model_used": "gpt-4.1-mini",
+  "model_used": "gpt-5.4-nano",
   "cached": true,
   "generated_at": "2024-01-15T12:00:00",
   "actual_cost": 0.0
@@ -561,7 +561,7 @@ Generate or retrieve cached historical trend analysis (quarterly + yearly) for a
       "trend_text": "## 2024 Annual Trends\n\n..."
     }
   ],
-  "model_used": "gpt-4.1-mini",
+  "model_used": "gpt-5.4-nano",
   "actual_cost": 0.012
 }
 ```
@@ -595,7 +595,7 @@ Estimate the API cost before generating a trend analysis or forecast. Call this 
 {
   "article_count": 42,
   "estimated_cost": 0.008,
-  "model": "gpt-4.1-mini",
+  "model": "gpt-5.4-nano",
   "n_quarters": 4,
   "n_years": 1
 }
@@ -644,7 +644,7 @@ Time references are detected automatically from natural language: `last N hours`
       "score": 0.89
     }
   ],
-  "model_used": "gpt-4.1-mini",
+  "model_used": "gpt-5.4-nano",
   "since_days": 7,
   "error": null
 }
@@ -727,7 +727,7 @@ Save configuration settings.
 {
   "llm_provider": "openai",
   "openai_api_key": "sk-proj-...",
-  "openai_model": "gpt-4.1-mini",
+  "openai_model": "gpt-5.4-nano",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "malpedia_api_key": "",

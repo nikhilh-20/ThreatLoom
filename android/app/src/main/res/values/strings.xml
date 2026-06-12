@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Threat Loom</string>
+    <string name="dashboard">Dashboard</string>
+    <string name="intelligence">Intelligence</string>
+    <string name="settings">Settings</string>
+    <string name="search_placeholder">Search articles…</string>
+    <string name="no_articles">No articles yet. Tap refresh or configure feeds in Settings.</string>
+    <string name="no_results">No matching articles found.</string>
+    <string name="loading">Loading…</string>
+    <string name="refresh">Refresh</string>
+    <string name="api_key_label">OpenAI API Key</string>
+    <string name="api_key_hint">sk-…</string>
+    <string name="test_api_key">Test</string>
+    <string name="model_label">Model</string>
+    <string name="fetch_interval_label">Fetch Interval (hours)</string>
+    <string name="feeds_section">RSS Feeds</string>
+    <string name="add_feed">Add Feed</string>
+    <string name="chat_hint">Ask about threats…</string>
+    <string name="chat_send">Send</string>
+    <string name="attack_flow">Attack Flow</string>
+    <string name="open_source">Open Source</string>
+    <string name="category_insights">Category Insights</string>
+    <string name="articles_label">articles</string>
+</resources>

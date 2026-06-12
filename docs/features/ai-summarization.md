@@ -120,8 +120,8 @@ The summarizer uses whichever model is set in `config.json` under `openai_model`
 | Operation | Max Tokens | Temperature |
 |---|---|---|
 | Relevance check | 300 | 0.0 |
-| Article summary | 2,500 | 0.3 |
+| Article summary | 12,000 | 0.3 |
 | Category insight | 2,000 | 0.4 |
 
 !!! tip "Quality vs. Cost"
-    `gpt-4o-mini` handles most articles well. For articles requiring deeper analysis (APT campaigns, complex exploit chains), `gpt-4o` produces noticeably better attack flows and novelty assessments.
+    `gpt-5.4-nano` handles most articles well. For articles requiring deeper analysis (APT campaigns, complex exploit chains), `gpt-5-mini` produces noticeably better attack flows and detail extraction.

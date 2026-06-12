@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:top="-25dp"
+        android:bottom="-30dp"
+        android:left="-25dp"
+        android:right="-25dp">
+        <bitmap
+            android:src="@drawable/threat_loom_icon"
+            android:gravity="fill" />
+    </item>
+</layer-list>

@@ -29,7 +29,7 @@
             <div class="form-group">
                 <label for="model-select">Model</label>
                 <select id="model-select" class="form-input">
-                    <option value="gpt-4.1-mini" {% if config.openai_model == 'gpt-4.1-mini' %}selected{% endif %}>gpt-4.1-mini (Default)</option>
+                    <option value="gpt-5.4-nano" {% if config.openai_model == 'gpt-5.4-nano' %}selected{% endif %}>gpt-5.4-nano</option>
                     <option value="gpt-5-mini" {% if config.openai_model == 'gpt-5-mini' %}selected{% endif %}>gpt-5-mini</option>
                 </select>
             </div>
@@ -50,7 +50,6 @@
                 <select id="anthropic-model-select" class="form-input">
                     <option value="claude-haiku-4-5-20251001" {% if config.anthropic_model == 'claude-haiku-4-5-20251001' %}selected{% endif %}>claude-haiku-4-5 (Recommended)</option>
                     <option value="claude-sonnet-4-6" {% if config.anthropic_model == 'claude-sonnet-4-6' %}selected{% endif %}>claude-sonnet-4-6</option>
-                    <option value="claude-opus-4-6" {% if config.anthropic_model == 'claude-opus-4-6' %}selected{% endif %}>claude-opus-4-6</option>
                 </select>
             </div>
             <div class="form-group" style="margin-top:8px;">
@@ -259,6 +258,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         loadStats();
+        resumeRefreshIfActive();
     });
 
 </script>

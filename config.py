@@ -42,13 +42,13 @@ def get_default_config():
     source of truth for the pre-configured RSS feed list.
 
     Returns:
-        dict: Default config with empty API keys, ``gpt-4.1-mini`` model,
+        dict: Default config with empty API keys, ``gpt-5.4-nano`` model,
         30-minute fetch interval, and feeds from ``config.json.example``.
     """
     return {
         "llm_provider": "openai",
         "openai_api_key": "",
-        "openai_model": "gpt-4.1-mini",
+        "openai_model": "gpt-5.4-nano",
         "anthropic_api_key": "",
         "anthropic_model": "claude-haiku-4-5-20251001",
         "malpedia_api_key": "",
@@ -90,37 +90,9 @@ def load_config():
             config.setdefault("feeds", []).extend(new_feeds)
             save_config(config)
 
-    # Environment variables override file-based keys
-    env_openai = os.environ.get("OPENAI_API_KEY")
-    if env_openai:
-        config["openai_api_key"] = env_openai
-    env_anthropic = os.environ.get("ANTHROPIC_API_KEY")
-    if env_anthropic:
-        config["anthropic_api_key"] = env_anthropic
-    env_provider = os.environ.get("LLM_PROVIDER")
-    if env_provider:
-        config["llm_provider"] = env_provider
-    env_malpedia = os.environ.get("MALPEDIA_API_KEY")
-    if env_malpedia:
-        config["malpedia_api_key"] = env_malpedia
-
-    env_smtp_host = os.environ.get("SMTP_HOST")
-    if env_smtp_host:
-        config["smtp_host"] = env_smtp_host
-    env_smtp_port = os.environ.get("SMTP_PORT")
-    if env_smtp_port:
-        config["smtp_port"] = int(env_smtp_port)
-    env_smtp_user = os.environ.get("SMTP_USERNAME")
-    if env_smtp_user:
-        config["smtp_username"] = env_smtp_user
-    env_smtp_pass = os.environ.get("SMTP_PASSWORD")
-    if env_smtp_pass:
-        config["smtp_password"] = env_smtp_pass
-    env_notif_email = os.environ.get("NOTIFICATION_EMAIL")
-    if env_notif_email:
-        config["notification_email"] = env_notif_email
-        config["email_notifications_enabled"] = True
-
+    # API keys, SMTP, and email recipients are managed through the Settings page
+    # and stored in config.json — they are intentionally NOT read from the
+    # environment, so secrets never need to live in the process environment.
     return config
 
 

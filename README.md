@@ -64,23 +64,13 @@ Double-click `run.bat` — it creates a virtual environment, installs dependenci
 
 ### Docker
 
-Copy `.env.example` to `.env` and fill in your credentials:
-
 ```bash
-cp .env.example .env
-# Edit .env with your API keys
 docker compose up
 ```
 
-The app will be available at `http://localhost:5000`. Data (database and config) persists in the local `./data` directory, shared between standalone and Docker modes.
+The app will be available at `http://localhost:5000`. Open the **Settings** page and enter your API keys (and SMTP details, if you want email alerts) — they're saved to `data/config.json`, which persists in the local `./data` directory and is shared between standalone and Docker modes. Optionally copy `.env.example` to `.env` first to override non-secret runtime settings (`HOST`, `PORT`, `DATA_DIR`).
 
-Alternatively, pass credentials as environment variables:
-
-```bash
-OPENAI_API_KEY=sk-proj-your-key docker compose up
-```
-
-See [Environment variables](#environment-variables) below for all supported options.
+See [Environment variables](#environment-variables) below for the supported options.
 
 ### Run (without Docker)
 
@@ -97,7 +87,7 @@ On first run, a `data/config.json` file is created with defaults from `config.js
 ```json
 {
   "openai_api_key": "",
-  "openai_model": "gpt-4.1-mini",
+  "openai_model": "gpt-5.4-nano",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "llm_provider": "openai",
@@ -112,45 +102,17 @@ On first run, a `data/config.json` file is created with defaults from `config.js
 }
 ```
 
-### Local development with `.env`
-
-For local development, create a `.env` file in the project root (copy from `.env.example`):
-
-```bash
-cp .env.example .env
-```
-
-Then edit `.env` and add your API keys:
-
-```bash
-OPENAI_API_KEY=sk-proj-your-key-here
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-MALPEDIA_API_KEY=your-malpedia-key
-LLM_PROVIDER=openai
-```
-
-The app will automatically load these variables when starting. The `.env` file is in `.gitignore` and will never be committed to version control.
-
 ### Environment variables
 
-API keys and server settings can be configured via environment variables, which take precedence over `config.json`. This is the recommended approach for Docker deployments.
+Only non-secret runtime settings are read from the environment (or an optional `.env` file copied from `.env.example`). **API keys, SMTP settings, and the notification recipient are configured on the Settings page** and stored in `data/config.json` — they are deliberately never read from the environment, so secrets don't need to live in the process environment.
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | — | OpenAI API key (overrides `config.json`) |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (overrides `config.json`; used when `llm_provider` is `anthropic`) |
-| `LLM_PROVIDER` | `openai` | LLM provider: `openai` or `anthropic` |
-| `OPENAI_MODEL` | `gpt-4.1-mini` | OpenAI model name (overrides `config.json`) |
-| `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Anthropic model name (overrides `config.json`) |
-| `MALPEDIA_API_KEY` | — | Optional Malpedia API key (overrides `config.json`) |
 | `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
 | `PORT` | auto-detect | Listen port (`5000` in Docker) |
 | `DATA_DIR` | `./data` | Directory for `config.json` and `threatlandscape.db` (`/app/data` in Docker) |
-| `SMTP_HOST` | — | SMTP server hostname (e.g. `smtp.gmail.com`) |
-| `SMTP_PORT` | `587` | SMTP server port |
-| `SMTP_USERNAME` | — | SMTP login username |
-| `SMTP_PASSWORD` | — | SMTP login password or app password |
-| `NOTIFICATION_EMAIL` | — | Recipient email (auto-enables notifications when set) |
+
+The `.env` file is in `.gitignore` and will never be committed to version control.
 
 ### Setting up your API key
 
@@ -191,8 +153,8 @@ All feeds are enabled by default. Disable any by setting `"enabled": false` in `
 
 | Model | Best for |
 |---|---|
-| `gpt-4.1-mini` | Fast, cost-effective (default) |
-| `gpt-5-mini` | Higher quality summaries with faster inference |
+| `gpt-5.4-nano` | Balanced cost/quality (default) |
+| `gpt-5-mini` | Higher quality summaries |
 
 **Anthropic**
 
@@ -200,7 +162,6 @@ All feeds are enabled by default. Disable any by setting `"enabled": false` in `
 |---|---|
 | `claude-haiku-4-5-20251001` | Daily use — fast, cost-effective (default) |
 | `claude-sonnet-4-6` | Higher quality summaries and insights |
-| `claude-opus-4-6` | Highest quality, complex analysis |
 
 Embeddings always use `text-embedding-3-small` (1536 dimensions) regardless of provider.
 

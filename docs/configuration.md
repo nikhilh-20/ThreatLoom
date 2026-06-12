@@ -9,7 +9,7 @@ On first run, `data/config.json` is created with default values:
 ```json
 {
   "openai_api_key": "",
-  "openai_model": "gpt-4.1-mini",
+  "openai_model": "gpt-5.4-nano",
   "anthropic_api_key": "",
   "anthropic_model": "claude-haiku-4-5-20251001",
   "llm_provider": "openai",
@@ -39,14 +39,14 @@ On first run, `data/config.json` is created with default values:
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `openai_api_key` | string | `""` | Your OpenAI API key. Required for summarization, relevance filtering, embeddings, and intelligence chat. Also required for embeddings when using the Anthropic provider. |
-| `openai_model` | string | `"gpt-4.1-mini"` | OpenAI model used for summarization, relevance checks, and insights. |
+| `openai_model` | string | `"gpt-5.4-nano"` | OpenAI model used for summarization, relevance checks, and insights. |
 
 #### OpenAI Model Options
 
 | Model | Speed | Cost | Quality | Best For |
 |---|---|---|---|---|
-| `gpt-4.1-mini` | Fast | Low | Good | Daily use, high-volume processing (default) |
-| `gpt-5-mini` | Fast | Low | Very Good | Higher quality summaries with faster inference |
+| `gpt-5.4-nano` | Fast | Low | Very Good | Balanced cost/quality (default) |
+| `gpt-5-mini` | Fast | Low | Very Good | Higher quality summaries |
 
 ### Anthropic Settings
 
@@ -61,10 +61,9 @@ On first run, `data/config.json` is created with default values:
 |---|---|---|---|---|
 | `claude-haiku-4-5-20251001` | Fast | Low | Good | Daily use, high-volume processing |
 | `claude-sonnet-4-6` | Medium | Medium | Excellent | Higher quality summaries and insights |
-| `claude-opus-4-6` | Medium | High | Best | Highest quality, complex analysis |
 
 !!! tip "Recommendation"
-    Start with `gpt-4o-mini` (OpenAI) or `claude-haiku-4-5-20251001` (Anthropic) for the best balance of speed and cost. Switch to a larger model if you need higher-quality trend analysis and attack flow generation.
+    Start with `gpt-5.4-nano` (OpenAI) or `claude-haiku-4-5-20251001` (Anthropic) for the best balance of speed and cost. Switch to a larger model if you need higher-quality trend analysis and attack flow generation.
 
 !!! info "Embeddings"
     The embedding model is fixed at `text-embedding-3-small` (1536 dimensions) and always uses OpenAI, regardless of the active `llm_provider`. An OpenAI API key is required even when using Anthropic for summarization.
@@ -211,25 +210,12 @@ The dashboard header also provides direct pipeline controls:
 
 ## Environment Variables
 
-All API keys and critical settings can be supplied as environment variables. These override any values stored in `data/config.json`, which is useful for Docker deployments where you don't want secrets baked into the image.
+Only non-secret runtime settings are read from the environment. **API keys, SMTP settings, and the notification recipient are configured on the Settings page** (and stored in `data/config.json`) — they are deliberately never read from the environment, so secrets don't need to live in the process environment or be baked into the Docker image.
 
-| Variable | Overrides | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `OPENAI_API_KEY` | `openai_api_key` | OpenAI API key. Always required for embeddings. |
-| `ANTHROPIC_API_KEY` | `anthropic_api_key` | Anthropic API key. Required when `LLM_PROVIDER=anthropic`. |
-| `LLM_PROVIDER` | `llm_provider` | Active LLM provider: `openai` or `anthropic`. |
-| `OPENAI_MODEL` | `openai_model` | OpenAI model name (e.g. `gpt-4.1-mini`). |
-| `ANTHROPIC_MODEL` | `anthropic_model` | Anthropic model name (e.g. `claude-haiku-4-5-20251001`). |
-| `MALPEDIA_API_KEY` | `malpedia_api_key` | Malpedia research library API token. |
-| `DATA_DIR` | — | Directory for `config.json` and `threatlandscape.db`. |
-| `SMTP_HOST` | `smtp_host` | SMTP server hostname. |
-| `SMTP_PORT` | `smtp_port` | SMTP server port. |
-| `SMTP_USERNAME` | `smtp_username` | SMTP login username. |
-| `SMTP_PASSWORD` | `smtp_password` | SMTP login password or app password. |
-| `NOTIFICATION_EMAIL` | `notification_email` | Recipient email address for article alerts. |
+| `HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker). |
+| `PORT` | auto-detect | Listen port (`5000` in Docker). |
+| `DATA_DIR` | `./data` | Directory for `config.json` and `threatlandscape.db` (`/app/data` in Docker). |
 
-Set these in `docker-compose.yml` under the `environment` key, or pass them on the command line:
-
-```bash
-OPENAI_API_KEY=sk-proj-... ANTHROPIC_API_KEY=sk-ant-... LLM_PROVIDER=anthropic docker compose up
-```
+These can be set in `docker-compose.yml` under the `environment` key, in an optional `.env` file (copied from `.env.example`), or on the command line.

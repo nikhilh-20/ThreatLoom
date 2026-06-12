@@ -30,7 +30,6 @@ def _get_smtp_config():
 def _build_email_html(title, article_url, data):
     """Build an inline-CSS HTML email body from structured summary data."""
     executive_summary = data.get("executive_summary", "No summary available.")
-    novelty = data.get("novelty", "Nothing particularly novel reported.")
     details = data.get("details", [])
     mitigations = data.get("mitigations", [])
 
@@ -61,9 +60,6 @@ def _build_email_html(title, article_url, data):
 
     <h3 style="color:#1a1a2e;border-bottom:2px solid #e0e0e0;padding-bottom:6px;">Executive Summary</h3>
     <p style="line-height:1.6;">{_esc(executive_summary)}</p>
-
-    <h3 style="color:#1a1a2e;border-bottom:2px solid #e0e0e0;padding-bottom:6px;">Novelty</h3>
-    <p style="line-height:1.6;">{_esc(novelty)}</p>
 
     <h3 style="color:#1a1a2e;border-bottom:2px solid #e0e0e0;padding-bottom:6px;">Details</h3>
     <ul style="line-height:1.6;padding-left:20px;">{details_html if details_html else '<li>No details available.</li>'}</ul>
@@ -179,15 +175,12 @@ def _build_digest_html(stories, period_label):
     for i, story in enumerate(stories):
         title = story.get("story_title", "Security Story")
         exec_sum = story.get("executive_summary", "")
-        novelty = story.get("novelty", "")
         details = story.get("details", [])
         mitigations = story.get("mitigations", [])
         source_urls = [u for u in story.get("source_urls", []) if u]
 
         details_html = "".join(f"<li style=\"margin-bottom:6px;list-style-type:disc;\">{_esc(d)}</li>" for d in details)
         mit_html = "".join(f"<li style=\"margin-bottom:6px;list-style-type:disc;\">{_esc(m)}</li>" for m in mitigations)
-        novelty_text = novelty if novelty else "Nothing particularly novel reported."
-        novelty_html = f'<h4 style="color:#1a1a2e;border-bottom:1px solid #e0e0e0;padding-bottom:4px;margin:10px 0 6px;">Novelty</h4><p style="line-height:1.6;margin:0 0 8px;">{_esc(novelty_text)}</p>'
         src_html = ""
         if source_urls:
             bullets = "".join(
@@ -204,7 +197,6 @@ def _build_digest_html(stories, period_label):
     <h2 style="margin:0 0 10px;font-size:15px;color:#1a1a2e;">{_esc(title)}</h2>
     <h4 style="color:#1a1a2e;border-bottom:1px solid #e0e0e0;padding-bottom:4px;margin:10px 0 6px;">Executive Summary</h4>
     <p style="line-height:1.6;margin:0 0 8px;">{_esc(exec_sum)}</p>
-    {novelty_html}
     <h4 style="color:#1a1a2e;border-bottom:1px solid #e0e0e0;padding-bottom:4px;margin:10px 0 6px;">Details</h4>
     <ul style="line-height:1.6;padding-left:20px;margin:0 0 8px;list-style-type:disc;">{details_html if details_html else '<li style="list-style-type:disc;">No details available.</li>'}</ul>
     <h4 style="color:#1a1a2e;border-bottom:1px solid #e0e0e0;padding-bottom:4px;margin:10px 0 6px;">Mitigations</h4>
@@ -274,7 +266,6 @@ def send_test_email(smtp_cfg=None):
             "This is a test notification from Threat Loom. If you are reading this, "
             "your email notification settings are configured correctly."
         ),
-        "novelty": "No novel threat activity — this is only a test.",
         "details": [
             "SMTP connection to your mail server was successful.",
             "Email rendering and delivery are working as expected.",
