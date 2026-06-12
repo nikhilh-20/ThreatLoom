@@ -134,6 +134,17 @@
         {% endif %}
         {# END TEST SECTION #}
 
+        {% if article.duplicates %}
+        <section class="article-section">
+            <h2>Also reported by {{ article.duplicates|length }} other source{{ 's' if article.duplicates|length != 1 }}</h2>
+            <ul class="key-points-list">
+                {% for d in article.duplicates %}
+                <li><a href="{{ d.url }}" target="_blank" rel="noopener">{{ d.source_name }} &mdash; {{ d.title }}</a></li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
         <div class="article-actions">
             <a href="{{ article.url }}" target="_blank" rel="noopener" class="btn btn-primary">
                 Read Original Article &rarr;

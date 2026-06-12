@@ -168,6 +168,18 @@
             <label for="fetch-interval">Auto-fetch interval: <span id="interval-value">{{ config.fetch_interval_minutes }}</span> minutes</label>
             <input type="range" id="fetch-interval" class="form-range" min="5" max="120" step="5" value="{{ config.fetch_interval_minutes }}" oninput="document.getElementById('interval-value').textContent = this.value">
         </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" id="dedup-enabled" class="feed-toggle" {% if config.dedup_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+            <span style="font-size:0.9rem;color:var(--text-primary);font-weight:500;">Skip duplicate coverage before summarizing</span>
+        </div>
+        <div class="form-group">
+            <label for="dedup-threshold">Duplicate similarity threshold: <span id="dedup-threshold-value">{{ config.dedup_threshold }}</span></label>
+            <input type="range" id="dedup-threshold" class="form-range" min="0.70" max="0.98" step="0.01" value="{{ config.dedup_threshold }}" oninput="document.getElementById('dedup-threshold-value').textContent = this.value">
+            <span class="form-hint">Higher = stricter (fewer articles treated as duplicates). Requires an OpenAI key for embeddings.</span>
+        </div>
         <div class="refresh-controls">
             <input type="number" id="settings-refresh-days" class="days-input" value="1" min="1" max="365" title="Days to look back">
             <span class="days-label">days</span>

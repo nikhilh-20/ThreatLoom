@@ -121,6 +121,17 @@ interface ArticleDao {
     @Query("UPDATE articles SET duplicate_of_id = :ofId WHERE id = :articleId")
     suspend fun setDuplicateOf(articleId: Long, ofId: Long)
 
+    /** Clear any article that pointed to [articleId] as its kept duplicate representative. */
+    @Query("UPDATE articles SET duplicate_of_id = NULL WHERE duplicate_of_id = :articleId")
+    suspend fun clearDuplicateRefsTo(articleId: Long)
+
+    /** Clear duplicate references pointing at articles about to be deleted by [deleteFetchedSince]. */
+    @Query("""
+        UPDATE articles SET duplicate_of_id = NULL
+        WHERE duplicate_of_id IN (SELECT id FROM articles WHERE fetched_date >= :cutoffDate)
+    """)
+    suspend fun clearDuplicateRefsFetchedSince(cutoffDate: String)
+
     @Query("SELECT COUNT(*) FROM articles WHERE content_raw IS NULL")
     suspend fun countUnscraped(): Int
 

@@ -64,6 +64,8 @@ def get_default_config():
         "email_mode": "per_article",
         "digest_period": "day",
         "report_token": "",
+        "dedup_enabled": True,
+        "dedup_threshold": 0.85,
     }
 
 
@@ -71,7 +73,9 @@ def load_config():
     """Load configuration from ``config.json``, creating it with defaults if absent.
 
     On every load, feeds from ``config.json.example`` are merged in by URL so
-    that new feeds added to the example are picked up by existing installations.
+    that new feeds added to the example are picked up by existing installations,
+    and any default keys missing from an older ``config.json`` are backfilled so
+    the Settings UI always reflects current defaults.
 
     Returns:
         dict: The parsed configuration dictionary.
@@ -83,11 +87,23 @@ def load_config():
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
 
+        dirty = False
+
         # Merge any feeds from the example file that aren't in config.json yet.
         existing_urls = {f["url"] for f in config.get("feeds", [])}
         new_feeds = [f for f in _load_example_feeds() if f["url"] not in existing_urls]
         if new_feeds:
             config.setdefault("feeds", []).extend(new_feeds)
+            dirty = True
+
+        # Backfill scalar default keys absent from older config.json files so the
+        # Settings UI and template render current defaults (e.g. dedup settings).
+        for key, value in get_default_config().items():
+            if key != "feeds" and key not in config:
+                config[key] = value
+                dirty = True
+
+        if dirty:
             save_config(config)
 
     # API keys, SMTP, and email recipients are managed through the Settings page

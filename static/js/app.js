@@ -1168,6 +1168,8 @@ function saveSettings() {
     const anthropicModel = document.getElementById('anthropic-model-select');
     const llmProvider = document.getElementById('llm-provider');
     const interval = document.getElementById('fetch-interval');
+    const dedupEnabled = document.getElementById('dedup-enabled');
+    const dedupThreshold = document.getElementById('dedup-threshold');
     const status = document.getElementById('save-status');
 
     const feedItems = document.querySelectorAll('.feed-item');
@@ -1219,6 +1221,8 @@ function saveSettings() {
         smtp_username: smtpUsername ? smtpUsername.value : '',
         smtp_password: smtpPassword ? smtpPassword.value : '',
         smtp_use_tls: smtpTls ? smtpTls.checked : true,
+        dedup_enabled: dedupEnabled ? dedupEnabled.checked : true,
+        dedup_threshold: dedupThreshold ? parseFloat(dedupThreshold.value) : 0.85,
     };
 
     fetch('/api/settings', {

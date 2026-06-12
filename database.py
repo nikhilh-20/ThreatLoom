@@ -35,7 +35,8 @@ def init_db():
 
     Creates all tables and indexes if they do not already exist:
     ``sources``, ``articles``, ``summaries``, ``article_correlations``,
-    ``category_insights``, and ``article_embeddings``.
+    ``category_insights``, ``article_embeddings``, and
+    ``article_dedup_embeddings``.
     """
     conn = get_connection()
     conn.executescript("""
@@ -117,6 +118,14 @@ def init_db():
             FOREIGN KEY (article_id) REFERENCES articles(id)
         );
 
+        CREATE TABLE IF NOT EXISTS article_dedup_embeddings (
+            article_id INTEGER PRIMARY KEY,
+            embedding BLOB NOT NULL,
+            model_used TEXT NOT NULL,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+
         CREATE TABLE IF NOT EXISTS digest_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sent_at TEXT NOT NULL,
@@ -135,6 +144,7 @@ def init_db():
     # Migrations: add columns that may not exist in older databases
     for col_sql in [
         "ALTER TABLE summaries ADD COLUMN network_traffic_reason TEXT",
+        "ALTER TABLE articles ADD COLUMN duplicate_of_id INTEGER",
     ]:
         try:
             conn.execute(col_sql)
@@ -392,6 +402,7 @@ def get_unsummarized_articles(limit=10, article_ids=None):
             FROM articles a
             LEFT JOIN summaries sm ON sm.article_id = a.id
             WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+              AND a.duplicate_of_id IS NULL
               AND a.id IN ({placeholders})
             ORDER BY a.fetched_date DESC
             LIMIT ?
@@ -405,6 +416,7 @@ def get_unsummarized_articles(limit=10, article_ids=None):
             FROM articles a
             LEFT JOIN summaries sm ON sm.article_id = a.id
             WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+              AND a.duplicate_of_id IS NULL
             ORDER BY a.fetched_date DESC
             LIMIT ?
             """,
@@ -468,6 +480,7 @@ def get_unsummarized_count():
         SELECT COUNT(*) as c FROM articles a
         LEFT JOIN summaries sm ON sm.article_id = a.id
         WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+          AND a.duplicate_of_id IS NULL
         """
     ).fetchone()["c"]
 
@@ -630,6 +643,152 @@ def save_embedding(article_id, embedding_bytes, model_used):
         (article_id, embedding_bytes, model_used),
     )
     conn.commit()
+
+
+def save_dedup_embedding(article_id, embedding_bytes, model_used):
+    """Upsert a pre-summary dedup embedding BLOB for an article.
+
+    Stored separately from ``article_embeddings`` (which holds post-summary
+    title+summary vectors used by semantic search); this table holds
+    title+content vectors computed before summarization for duplicate
+    detection.
+
+    Args:
+        article_id: The article's integer ID.
+        embedding_bytes: Raw bytes of the float32 numpy embedding vector.
+        model_used: The embedding model name (e.g. ``"text-embedding-3-small"``).
+    """
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO article_dedup_embeddings (article_id, embedding, model_used) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(article_id) DO UPDATE SET "
+        "embedding=excluded.embedding, model_used=excluded.model_used, "
+        "created_date=CURRENT_TIMESTAMP",
+        (article_id, embedding_bytes, model_used),
+    )
+    conn.commit()
+
+
+def get_dedup_candidates(limit=None):
+    """Fetch scraped, unsummarized articles not yet marked as duplicates.
+
+    These are the candidates for the pre-summary dedup pass.
+
+    Args:
+        limit: Optional maximum number of candidates to return.
+
+    Returns:
+        List of dicts with ``id``, ``title``, ``content_raw``,
+        ``published_date``, and ``fetched_date``.
+    """
+    conn = get_connection()
+    query = """
+        SELECT a.id, a.title, a.content_raw, a.published_date, a.fetched_date
+        FROM articles a
+        LEFT JOIN summaries sm ON sm.article_id = a.id
+        WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
+          AND a.duplicate_of_id IS NULL
+        ORDER BY a.fetched_date DESC
+    """
+    params = []
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_dedup_reference_embeddings(cutoff_iso):
+    """Fetch dedup embeddings of already-summarized, non-duplicate articles.
+
+    Used as the reference set for the cross-run dedup pass: a fresh candidate
+    matching one of these is the duplicate (the reference is already
+    summarized and should not be re-summarized).
+
+    Args:
+        cutoff_iso: ISO-format timestamp; only articles fetched at or after
+            this time are considered.
+
+    Returns:
+        List of dicts with ``article_id``, ``embedding`` (raw bytes),
+        ``published_date``, and ``fetched_date``.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT de.article_id, de.embedding, a.published_date, a.fetched_date
+        FROM article_dedup_embeddings de
+        JOIN articles a ON a.id = de.article_id
+        JOIN summaries sm ON sm.article_id = a.id
+        WHERE a.fetched_date >= ?
+          AND a.duplicate_of_id IS NULL
+          AND sm.model_used != 'failed'
+        """,
+        (cutoff_iso,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_duplicate_of(dup_id, kept_id):
+    """Mark an article as a duplicate of another (the kept representative).
+
+    Args:
+        dup_id: ID of the article being marked as a duplicate.
+        kept_id: ID of the article retained as the canonical version.
+    """
+    conn = get_connection()
+    conn.execute(
+        "UPDATE articles SET duplicate_of_id = ? WHERE id = ?",
+        (kept_id, dup_id),
+    )
+    conn.commit()
+
+
+def save_correlation(article_id_1, article_id_2, correlation_type, confidence, description):
+    """Insert a correlation linking two articles.
+
+    Args:
+        article_id_1: First (kept/canonical) article ID.
+        article_id_2: Second (related/duplicate) article ID.
+        correlation_type: Kind of correlation (e.g. ``"duplicate"``).
+        confidence: Confidence score (e.g. cosine similarity, 0.0--1.0).
+        description: Human-readable description of the correlation.
+    """
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO article_correlations "
+        "(article_id_1, article_id_2, correlation_type, confidence, description) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (article_id_1, article_id_2, correlation_type, confidence, description),
+    )
+    conn.commit()
+
+
+def get_duplicate_articles(article_id):
+    """Return articles marked as duplicate coverage of the given article.
+
+    Reads the ``article_correlations`` table for ``"duplicate"`` links where
+    the given article is the kept/canonical one, then resolves the duplicates'
+    source and title data for display.
+
+    Args:
+        article_id: The kept article's integer ID.
+
+    Returns:
+        List of article dicts (as from ``get_articles_by_ids``) for the
+        duplicates, or an empty list if there are none.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT article_id_2 FROM article_correlations "
+        "WHERE correlation_type = 'duplicate' AND article_id_1 = ?",
+        (article_id,),
+    ).fetchall()
+    dup_ids = [r["article_id_2"] for r in rows]
+    if not dup_ids:
+        return []
+    return get_articles_by_ids(dup_ids)
 
 
 def get_all_embeddings(model_used=None):
@@ -1328,11 +1487,14 @@ def delete_article(article_id):
     """
     conn = get_connection()
     conn.execute("DELETE FROM article_embeddings WHERE article_id = ?", (article_id,))
+    conn.execute("DELETE FROM article_dedup_embeddings WHERE article_id = ?", (article_id,))
     conn.execute("DELETE FROM summaries WHERE article_id = ?", (article_id,))
     conn.execute(
         "DELETE FROM article_correlations WHERE article_id_1 = ? OR article_id_2 = ?",
         (article_id, article_id),
     )
+    # Un-mark any article that pointed to this one as its duplicate representative.
+    conn.execute("UPDATE articles SET duplicate_of_id = NULL WHERE duplicate_of_id = ?", (article_id,))
     conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
     conn.commit()
 
@@ -1372,11 +1534,13 @@ def delete_file_url_articles():
 
     ph = ",".join("?" * len(ids))
     conn.execute(f"DELETE FROM article_embeddings WHERE article_id IN ({ph})", ids)
+    conn.execute(f"DELETE FROM article_dedup_embeddings WHERE article_id IN ({ph})", ids)
     conn.execute(f"DELETE FROM summaries WHERE article_id IN ({ph})", ids)
     conn.execute(
         f"DELETE FROM article_correlations WHERE article_id_1 IN ({ph}) OR article_id_2 IN ({ph})",
         ids + ids,
     )
+    conn.execute(f"UPDATE articles SET duplicate_of_id = NULL WHERE duplicate_of_id IN ({ph})", ids)
     conn.execute(f"DELETE FROM articles WHERE id IN ({ph})", ids)
     conn.commit()
     return len(ids)
@@ -1391,10 +1555,12 @@ def clear_database():
     conn = get_connection()
     conn.executescript("""
         DELETE FROM article_embeddings;
+        DELETE FROM article_dedup_embeddings;
         DELETE FROM trend_analyses;
         DELETE FROM category_insights;
         DELETE FROM article_correlations;
         DELETE FROM summaries;
+        UPDATE articles SET duplicate_of_id = NULL;
         DELETE FROM articles;
         DELETE FROM digest_log;
         UPDATE sources SET last_fetched = NULL;
@@ -1424,12 +1590,14 @@ def clear_articles_before_days(days):
         return 0
     ph = ",".join("?" * len(ids))
     conn.execute(f"DELETE FROM article_embeddings WHERE article_id IN ({ph})", ids)
+    conn.execute(f"DELETE FROM article_dedup_embeddings WHERE article_id IN ({ph})", ids)
     conn.execute(f"DELETE FROM summaries WHERE article_id IN ({ph})", ids)
     conn.execute(
         f"DELETE FROM article_correlations "
         f"WHERE article_id_1 IN ({ph}) OR article_id_2 IN ({ph})",
         ids + ids,
     )
+    conn.execute(f"UPDATE articles SET duplicate_of_id = NULL WHERE duplicate_of_id IN ({ph})", ids)
     conn.execute(f"DELETE FROM articles WHERE id IN ({ph})", ids)
     conn.commit()
     return len(ids)
@@ -1447,11 +1615,13 @@ def delete_article_summary(article_id):
     """
     conn = get_connection()
     conn.execute("DELETE FROM article_embeddings WHERE article_id = ?", (article_id,))
+    conn.execute("DELETE FROM article_dedup_embeddings WHERE article_id = ?", (article_id,))
     conn.execute(
         "DELETE FROM article_correlations WHERE article_id_1 = ? OR article_id_2 = ?",
         (article_id, article_id),
     )
     conn.execute("DELETE FROM summaries WHERE article_id = ?", (article_id,))
+    conn.execute("UPDATE articles SET duplicate_of_id = NULL WHERE duplicate_of_id = ?", (article_id,))
     conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
     conn.commit()
 

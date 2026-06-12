@@ -22,6 +22,7 @@ from database import (
     get_available_tags,
     get_categorized_articles,
     get_category_insight,
+    get_duplicate_articles,
     get_embedding_stats,
     get_failure_articles,
     get_sources,
@@ -105,6 +106,8 @@ def article_detail(article_id):
         article["key_points"] = json.loads(article.get("key_points") or "[]")
     except (json.JSONDecodeError, TypeError):
         article["key_points"] = []
+
+    article["duplicates"] = get_duplicate_articles(article_id)
 
     return render_template("article.html", article=article)
 
@@ -566,6 +569,10 @@ def api_settings():
             config["email_mode"] = data["email_mode"]
         if "digest_period" in data and data["digest_period"] in ("day", "week"):
             config["digest_period"] = data["digest_period"]
+        if "dedup_enabled" in data:
+            config["dedup_enabled"] = bool(data["dedup_enabled"])
+        if "dedup_threshold" in data:
+            config["dedup_threshold"] = max(0.0, min(1.0, float(data["dedup_threshold"])))
 
         save_config(config)
         reschedule_digest()

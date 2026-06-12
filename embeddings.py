@@ -1,6 +1,7 @@
 import logging
 import struct
 import time
+from datetime import datetime, timedelta
 
 import numpy as np
 from openai import APIError, RateLimitError
@@ -10,14 +11,24 @@ from database import (
     get_all_embeddings,
     get_article_ids_since_days,
     get_articles_by_ids,
+    get_dedup_candidates,
+    get_dedup_reference_embeddings,
     get_unembedded_articles,
+    save_correlation,
+    save_dedup_embedding,
     save_embedding,
+    set_duplicate_of,
 )
 
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMS = 1536
+
+# Dedup tuning (mirrors the Android port's DeduplicateArticlesUseCase)
+DEDUP_WINDOW_HOURS = 24
+DEDUP_CONTENT_SNIPPET = 2000
+DEDUP_EMBED_BATCH = 50
 
 
 def _get_client():
@@ -137,6 +148,160 @@ def embed_pending_articles(limit=50, article_ids=None):
 
     logger.info(f"Generated embeddings for {stored}/{len(articles)} articles")
     return len(articles)
+
+
+def _parse_ts(value):
+    """Parse an ISO-ish timestamp string to a datetime, or None.
+
+    Handles both feedparser ISO strings (``2026-06-12T18:09:48``) and SQLite
+    ``CURRENT_TIMESTAMP`` strings (``2026-06-12 18:09:48``).
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _within_window(a, b):
+    """Whether two timestamp strings are within the dedup window of each other."""
+    da = _parse_ts(a)
+    db = _parse_ts(b)
+    if da is None or db is None:
+        return False
+    return abs((da - db).total_seconds()) <= DEDUP_WINDOW_HOURS * 3600
+
+
+def deduplicate_pending_articles():
+    """Mark near-duplicate scraped articles before the summarization step.
+
+    Embeds each scraped-but-unsummarized article (title + content snippet),
+    then marks an article as a duplicate when its embedding is at least the
+    configured threshold similar to another article published within
+    ``DEDUP_WINDOW_HOURS`` — comparing first against already-summarized
+    articles from the last window (cross-run), then against other candidates
+    in this run (same-run clustering, longest article kept).
+
+    Duplicates are flagged via ``set_duplicate_of`` (excluding them from
+    summarization) and linked via ``save_correlation`` so the kept article can
+    surface an "also reported by" cross-reference.
+
+    A silent no-op when dedup is disabled or no OpenAI key is configured.
+
+    Returns:
+        Number of articles marked as duplicates.
+    """
+    config = load_config()
+    if not config.get("dedup_enabled", True):
+        return 0
+
+    client = _get_client()
+    if client is None:
+        logger.info("No OpenAI API key configured, skipping deduplication")
+        return 0
+
+    threshold = float(config.get("dedup_threshold", 0.85))
+
+    candidates = get_dedup_candidates()
+    if not candidates:
+        return 0
+
+    # 1. Embed every candidate (title + content snippet) and persist for future runs.
+    embedded = []  # list of (candidate dict, unit vector)
+    for i in range(0, len(candidates), DEDUP_EMBED_BATCH):
+        chunk = candidates[i:i + DEDUP_EMBED_BATCH]
+        texts = [
+            f"{c['title'] or ''}\n{(c['content_raw'] or '')[:DEDUP_CONTENT_SNIPPET]}"
+            for c in chunk
+        ]
+        embeddings = generate_embeddings_batch(texts)
+        if embeddings is None:
+            logger.warning("Embedding generation failed during dedup, aborting dedup pass")
+            return 0
+        for cand, emb in zip(chunk, embeddings):
+            blob = _floats_to_blob(emb)
+            try:
+                save_dedup_embedding(cand["id"], blob, EMBEDDING_MODEL)
+            except Exception as e:
+                logger.error(f"Failed to save dedup embedding for article {cand['id']}: {e}")
+            vec = _blob_to_array(blob).astype(np.float32)
+            norm = np.linalg.norm(vec)
+            if norm == 0:
+                continue
+            embedded.append((cand, vec / norm))
+
+    if not embedded:
+        return 0
+
+    # Longest article first, so it becomes the kept representative for its cluster.
+    embedded.sort(key=lambda e: len(e[0].get("content_raw") or ""), reverse=True)
+
+    cutoff = (datetime.now() - timedelta(hours=DEDUP_WINDOW_HOURS)).isoformat()
+    references = []  # list of (article_id, unit vector, date)
+    for ref in get_dedup_reference_embeddings(cutoff):
+        vec = _blob_to_array(ref["embedding"]).astype(np.float32)
+        norm = np.linalg.norm(vec)
+        if norm == 0:
+            continue
+        references.append((
+            ref["article_id"],
+            vec / norm,
+            ref["published_date"] or ref["fetched_date"],
+        ))
+
+    def _cand_date(cand):
+        return cand.get("published_date") or cand.get("fetched_date")
+
+    marked = 0
+    assigned = set()
+
+    # 2. Cross-run pass: a candidate matching an already-summarized article is the
+    #    duplicate (keep the reference regardless of length to avoid re-summarizing it).
+    for cand, vec in embedded:
+        cand_date = _cand_date(cand)
+        for ref_id, ref_vec, ref_date in references:
+            if not _within_window(cand_date, ref_date):
+                continue
+            sim = float(np.dot(vec, ref_vec))
+            if sim >= threshold:
+                _mark_duplicate(kept_id=ref_id, dup_id=cand["id"], similarity=sim)
+                assigned.add(cand["id"])
+                marked += 1
+                break
+
+    # 3. Same-run clustering: the first unassigned (longest) candidate is the kept
+    #    representative; later candidates within the window that match it are duplicates.
+    for i in range(len(embedded)):
+        head_cand, head_vec = embedded[i]
+        if head_cand["id"] in assigned:
+            continue
+        head_date = _cand_date(head_cand)
+        for j in range(i + 1, len(embedded)):
+            other_cand, other_vec = embedded[j]
+            if other_cand["id"] in assigned:
+                continue
+            if not _within_window(head_date, _cand_date(other_cand)):
+                continue
+            sim = float(np.dot(head_vec, other_vec))
+            if sim >= threshold:
+                _mark_duplicate(kept_id=head_cand["id"], dup_id=other_cand["id"], similarity=sim)
+                assigned.add(other_cand["id"])
+                marked += 1
+
+    return marked
+
+
+def _mark_duplicate(kept_id, dup_id, similarity):
+    """Flag ``dup_id`` as a duplicate of ``kept_id`` and link them."""
+    set_duplicate_of(dup_id, kept_id)
+    save_correlation(
+        kept_id,
+        dup_id,
+        "duplicate",
+        round(float(similarity), 4),
+        "Duplicate coverage of the same topic within 24h",
+    )
 
 
 def cluster_articles_by_similarity(articles, threshold=0.82):

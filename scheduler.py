@@ -80,6 +80,18 @@ def _run_pipeline(lookback_days=1, since_last_fetch=False):
             _pipeline_stage = "aborted"
             return
 
+        # Mark near-duplicate coverage before summarization so only one article per
+        # cluster is summarized (silent no-op without an OpenAI key or when disabled).
+        _pipeline_stage = "dedup"
+        from embeddings import deduplicate_pending_articles
+        marked = deduplicate_pending_articles()
+        if marked:
+            logger.info(f"Marked {marked} near-duplicate articles, skipping their summarization")
+
+        if _abort_requested:
+            _pipeline_stage = "aborted"
+            return
+
         # Cost confirmation before summarization
         to_summarize = get_unsummarized_count()
         total_summarized = 0

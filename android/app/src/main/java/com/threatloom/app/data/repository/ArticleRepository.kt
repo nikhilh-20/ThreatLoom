@@ -81,6 +81,7 @@ class ArticleRepository @Inject constructor(
         dedupEmbeddingDao.deleteByArticleId(articleId)
         summaryDao.deleteByArticleId(articleId)
         correlationDao.deleteForArticle(articleId)
+        articleDao.clearDuplicateRefsTo(articleId)
         articleDao.delete(articleId)
     }
 
@@ -89,6 +90,7 @@ class ArticleRepository @Inject constructor(
         embeddingDao.deleteFetchedSince(cutoffDate)
         dedupEmbeddingDao.deleteFetchedSince(cutoffDate)
         summaryDao.deleteFetchedSince(cutoffDate)
+        articleDao.clearDuplicateRefsFetchedSince(cutoffDate)
         articleDao.deleteFetchedSince(cutoffDate)
     }
 
