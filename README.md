@@ -13,25 +13,25 @@ Threat Loom automatically collects cybersecurity articles from RSS feeds and res
 ## Web Application
 
 <p align="center">
-  <img src="static/img/web/home.png" alt="Threat Loom Home on Web" width="80">
+  <img src="static/img/web/home.png" alt="Threat Loom Home on Web">
 </p>
 
 <p align="center">
-  <img src="static/img/web/category.png" alt="Threat Loom Article on Web" width="80">
+  <img src="static/img/web/category.png" alt="Threat Loom Article on Web">
 </p>
 
 <p align="center">
-  <img src="static/img/web/article.png" alt="Threat Loom Article on Web" width="80">
+  <img src="static/img/web/article.png" alt="Threat Loom Article on Web">
 </p>
 
 ## Android Application
 
 <p align="center">
-  <img src="static/img/android/home.png" alt="Threat Loom Home on Android" width="80">
+  <img src="static/img/android/home.png" alt="Threat Loom Home on Android">
 </p>
 
 <p align="center">
-  <img src="static/img/android/article.png" alt="Threat Loom Article on Android" width="80">
+  <img src="static/img/android/article.png" alt="Threat Loom Article on Android">
 </p>
 
 ## Features
