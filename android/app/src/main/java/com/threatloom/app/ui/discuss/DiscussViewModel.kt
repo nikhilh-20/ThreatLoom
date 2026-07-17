@@ -45,6 +45,12 @@ class DiscussViewModel @Inject constructor(
     private val _concluded = MutableStateFlow(false)
     val concluded: StateFlow<Boolean> = _concluded.asStateFlow()
 
+    private val _isSaved = MutableStateFlow(false)
+    val isSaved: StateFlow<Boolean> = _isSaved.asStateFlow()
+
+    private val _hasUnsavedChanges = MutableStateFlow(false)
+    val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges.asStateFlow()
+
     fun init(id: Long) {
         if (initialized) return
         initialized = true
@@ -59,6 +65,8 @@ class DiscussViewModel @Inject constructor(
                 latestModel = saved.modelUsed
                 _sessionCost.value = saved.totalCost
                 _concluded.value = saved.concluded
+                _isSaved.value = true
+                _hasUnsavedChanges.value = false
                 return@launch
             }
             val topic = quizRepository.getByArticleId(id)?.debateTopic
@@ -79,7 +87,7 @@ class DiscussViewModel @Inject constructor(
         _messages.value = listOf(opening)
         if (opening.concluded) _concluded.value = true
         _isLoading.value = false
-        persist()
+        _hasUnsavedChanges.value = true
     }
 
     fun onInputChanged(text: String) {
@@ -102,7 +110,7 @@ class DiscussViewModel @Inject constructor(
             _messages.value = _messages.value + response
             if (response.concluded) _concluded.value = true
             _isLoading.value = false
-            persist()
+            _hasUnsavedChanges.value = true
         }
     }
 
@@ -110,7 +118,16 @@ class DiscussViewModel @Inject constructor(
     fun endDebate() {
         if (_concluded.value) return
         _concluded.value = true
-        viewModelScope.launch { persist() }
+        _hasUnsavedChanges.value = true
+    }
+
+    fun save() {
+        if (_messages.value.isEmpty()) return
+        viewModelScope.launch {
+            persist()
+            _isSaved.value = true
+            _hasUnsavedChanges.value = false
+        }
     }
 
     private fun accrueCost(before: com.threatloom.app.domain.service.CostSnapshot, model: String?) {

@@ -11,6 +11,8 @@ import com.threatloom.app.data.remote.dto.AttackFlowDto
 import com.threatloom.app.data.repository.ArticleRepository
 import com.threatloom.app.data.repository.DebateRepository
 import com.threatloom.app.data.repository.QuizRepository
+import com.threatloom.app.data.repository.SavedChatRepository
+import com.threatloom.app.data.repository.SavedChatSummary
 import com.threatloom.app.domain.model.ArticleWithSummary
 import com.threatloom.app.domain.model.AttackFlowStep
 import com.threatloom.app.domain.service.ReportService
@@ -38,6 +40,7 @@ class ArticleDetailViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val quizRepository: QuizRepository,
     private val debateRepository: DebateRepository,
+    private val savedChatRepository: SavedChatRepository,
     private val generateQuizUseCase: GenerateQuizUseCase,
     private val summarizeArticlesUseCase: SummarizeArticlesUseCase
 ) : ViewModel() {
@@ -79,6 +82,9 @@ class ArticleDetailViewModel @Inject constructor(
 
     private val _debateExists = MutableStateFlow(false)
     val debateExists: StateFlow<Boolean> = _debateExists.asStateFlow()
+
+    private val _savedChats = MutableStateFlow<List<SavedChatSummary>>(emptyList())
+    val savedChats: StateFlow<List<SavedChatSummary>> = _savedChats.asStateFlow()
 
     private val _isResummarizing = MutableStateFlow(false)
     val isResummarizing: StateFlow<Boolean> = _isResummarizing.asStateFlow()
@@ -162,6 +168,7 @@ class ArticleDetailViewModel @Inject constructor(
                 _duplicates.value = articleRepository.getDuplicatesOf(articleId)
                 _quizData.value = quizRepository.getByArticleId(articleId)
                 _debateExists.value = debateRepository.exists(articleId)
+                _savedChats.value = savedChatRepository.getAllByArticleId(articleId)
             } catch (_: Exception) {}
             _isLoading.value = false
         }
@@ -213,6 +220,15 @@ class ArticleDetailViewModel @Inject constructor(
             try {
                 debateRepository.delete(articleId)
                 _debateExists.value = false
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun deleteChat(id: Long) {
+        viewModelScope.launch {
+            try {
+                savedChatRepository.delete(id)
+                _savedChats.value = _savedChats.value.filterNot { it.id == id }
             } catch (_: Exception) {}
         }
     }

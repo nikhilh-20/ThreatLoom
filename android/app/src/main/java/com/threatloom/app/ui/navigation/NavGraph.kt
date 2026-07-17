@@ -80,6 +80,7 @@ fun NavGraph(navController: NavHostController) {
                 onBack = { navController.popBackStack() },
                 onQuizClick = { id -> navController.navigate(Screen.Quiz.createRoute(id)) },
                 onChatClick = { id -> navController.navigate(Screen.ArticleChat.createRoute(id)) },
+                onOpenChatClick = { id, convId -> navController.navigate(Screen.ArticleChat.createRoute(id, convId)) },
                 onDiscussClick = { id -> navController.navigate(Screen.Discuss.createRoute(id)) }
             )
         }
@@ -108,11 +109,17 @@ fun NavGraph(navController: NavHostController) {
 
         composable(
             route = Screen.ArticleChat.route,
-            arguments = listOf(navArgument("articleId") { type = NavType.LongType })
+            arguments = listOf(
+                navArgument("articleId") { type = NavType.LongType },
+                navArgument("conversationId") { type = NavType.LongType; defaultValue = Screen.ArticleChat.NEW_CONVERSATION_ID }
+            )
         ) { backStackEntry ->
             val articleId = backStackEntry.arguments?.getLong("articleId") ?: 0L
+            val rawConversationId = backStackEntry.arguments?.getLong("conversationId") ?: Screen.ArticleChat.NEW_CONVERSATION_ID
+            val conversationId = rawConversationId.takeIf { it != Screen.ArticleChat.NEW_CONVERSATION_ID }
             ArticleChatScreen(
                 articleId = articleId,
+                conversationId = conversationId,
                 onBack = { navController.popBackStack() }
             )
         }

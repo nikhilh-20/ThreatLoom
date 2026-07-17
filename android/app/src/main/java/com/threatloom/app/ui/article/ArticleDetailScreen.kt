@@ -51,6 +51,7 @@ fun ArticleDetailScreen(
     onBack: () -> Unit,
     onQuizClick: (articleId: Long) -> Unit = {},
     onChatClick: (articleId: Long) -> Unit = {},
+    onOpenChatClick: (articleId: Long, conversationId: Long) -> Unit = { _, _ -> },
     onDiscussClick: (articleId: Long) -> Unit = {},
     viewModel: ArticleDetailViewModel = hiltViewModel()
 ) {
@@ -70,6 +71,7 @@ fun ArticleDetailScreen(
     val resummarizeEstimate by viewModel.resummarizeEstimate.collectAsState()
     val quizCost by viewModel.quizCost.collectAsState()
     val debateExists by viewModel.debateExists.collectAsState()
+    val savedChats by viewModel.savedChats.collectAsState()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -77,6 +79,7 @@ fun ArticleDetailScreen(
     var showDeleteSummaryDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var showDeleteDebateDialog by remember { mutableStateOf(false) }
+    var deleteChatId by remember { mutableStateOf<Long?>(null) }
 
     // Parsed summary sections, hoisted so both the top-bar audio menu and the content
     // body can use them.
@@ -199,6 +202,21 @@ fun ArticleDetailScreen(
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteDebateDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    deleteChatId?.let { chatId ->
+        AlertDialog(
+            onDismissRequest = { deleteChatId = null },
+            title = { Text("Delete Chat?") },
+            text = { Text("This will permanently delete this saved conversation.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteChat(chatId)
+                    deleteChatId = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteChatId = null }) { Text("Cancel") } }
         )
     }
 
@@ -550,6 +568,15 @@ fun ArticleDetailScreen(
                     onDiscuss = { onDiscussClick(articleId) },
                     onDeleteDebate = { showDeleteDebateDialog = true }
                 )
+
+                if (savedChats.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    SavedChatsSection(
+                        chats = savedChats,
+                        onOpen = { chatId -> onOpenChatClick(articleId, chatId) },
+                        onDelete = { chatId -> deleteChatId = chatId }
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -716,6 +743,73 @@ private fun QuizPrepSection(
                 else -> {
                     Button(onClick = onCreateQuiz, modifier = Modifier.fillMaxWidth()) {
                         Text("Create Quiz")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedChatsSection(
+    chats: List<com.threatloom.app.data.repository.SavedChatSummary>,
+    onOpen: (Long) -> Unit,
+    onDelete: (Long) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Chat,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Saved Chats",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            chats.forEach { chat ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(chat.id) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(chat.title ?: "Chat", style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                        val meta = buildString {
+                            append(DateUtils.relativeTime(chat.updatedDate))
+                            if (chat.totalCost > 0.0 || chat.modelUsed != null) {
+                                append(" · $")
+                                append("%.4f".format(chat.totalCost))
+                                chat.modelUsed?.let { append(" · $it") }
+                            }
+                        }
+                        Text(meta, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { onDelete(chat.id) }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete chat",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }

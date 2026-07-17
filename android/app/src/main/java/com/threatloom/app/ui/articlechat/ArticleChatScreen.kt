@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +23,7 @@ import com.threatloom.app.ui.components.ChatBubble
 @Composable
 fun ArticleChatScreen(
     articleId: Long,
+    conversationId: Long? = null,
     onBack: () -> Unit,
     viewModel: ArticleChatViewModel = hiltViewModel()
 ) {
@@ -29,13 +32,15 @@ fun ArticleChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val sessionCost by viewModel.sessionCost.collectAsState()
     val sessionModel by viewModel.sessionModel.collectAsState()
+    val isSaved by viewModel.isSaved.collectAsState()
+    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
 
     val listState = rememberLazyListState()
     var showExitConfirmDialog by remember { mutableStateOf(false) }
     var showCostDialog by remember { mutableStateOf(false) }
 
     val handleBack = {
-        if (messages.any { it.role == "user" }) {
+        if (hasUnsavedChanges) {
             showExitConfirmDialog = true
         } else {
             val cost = sessionCost
@@ -45,7 +50,7 @@ fun ArticleChatScreen(
 
     BackHandler(enabled = true) { handleBack() }
 
-    LaunchedEffect(articleId) { viewModel.init(articleId) }
+    LaunchedEffect(articleId, conversationId) { viewModel.init(articleId, conversationId) }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -55,16 +60,24 @@ fun ArticleChatScreen(
         AlertDialog(
             onDismissRequest = { showExitConfirmDialog = false },
             title = { Text("Close chat?") },
-            text = { Text("Closing will discard this conversation.") },
+            text = { Text("You have unsaved changes. Closing will discard this conversation unless you save it.") },
             confirmButton = {
                 TextButton(onClick = {
                     showExitConfirmDialog = false
                     val cost = sessionCost
                     if (cost != null && cost > 0.0) showCostDialog = true else onBack()
-                }) { Text("Close") }
+                }) { Text("Discard") }
             },
             dismissButton = {
-                TextButton(onClick = { showExitConfirmDialog = false }) { Text("Cancel") }
+                Row {
+                    TextButton(onClick = { showExitConfirmDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        viewModel.save()
+                        showExitConfirmDialog = false
+                        val cost = sessionCost
+                        if (cost != null && cost > 0.0) showCostDialog = true else onBack()
+                    }) { Text("Save") }
+                }
             }
         )
     }
@@ -97,6 +110,17 @@ fun ArticleChatScreen(
                 navigationIcon = {
                     IconButton(onClick = { handleBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = viewModel::save,
+                        enabled = messages.any { it.role == "user" } && hasUnsavedChanges
+                    ) {
+                        Icon(
+                            if (isSaved && !hasUnsavedChanges) Icons.Default.Bookmark else Icons.Default.Save,
+                            contentDescription = "Save conversation"
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

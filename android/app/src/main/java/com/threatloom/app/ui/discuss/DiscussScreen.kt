@@ -1,5 +1,6 @@
 package com.threatloom.app.ui.discuss
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -7,6 +8,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,13 +32,46 @@ fun DiscussScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val sessionCost by viewModel.sessionCost.collectAsState()
     val concluded by viewModel.concluded.collectAsState()
+    val isSaved by viewModel.isSaved.collectAsState()
+    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
 
     val listState = rememberLazyListState()
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
+
+    val handleBack = {
+        if (hasUnsavedChanges) showExitConfirmDialog = true else onBack()
+    }
+
+    BackHandler(enabled = true) { handleBack() }
 
     LaunchedEffect(articleId) { viewModel.init(articleId) }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
+    if (showExitConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirmDialog = false },
+            title = { Text("Close discussion?") },
+            text = { Text("You have unsaved changes. Closing will discard this discussion unless you save it.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitConfirmDialog = false
+                    onBack()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { showExitConfirmDialog = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        viewModel.save()
+                        showExitConfirmDialog = false
+                        onBack()
+                    }) { Text("Save") }
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -55,7 +91,7 @@ fun DiscussScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { handleBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -72,6 +108,15 @@ fun DiscussScreen(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
+                    }
+                    IconButton(
+                        onClick = viewModel::save,
+                        enabled = hasUnsavedChanges && !isLoading
+                    ) {
+                        Icon(
+                            if (isSaved && !hasUnsavedChanges) Icons.Default.Bookmark else Icons.Default.Save,
+                            contentDescription = "Save discussion"
+                        )
                     }
                     if (!concluded) {
                         TextButton(onClick = viewModel::endDebate, enabled = messages.isNotEmpty() && !isLoading) {
