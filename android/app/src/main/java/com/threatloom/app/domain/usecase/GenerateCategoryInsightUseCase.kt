@@ -6,12 +6,14 @@ import com.threatloom.app.data.remote.dto.*
 import com.threatloom.app.data.repository.CategoryInsightRepository
 import com.threatloom.app.domain.category.CategoryRules
 import com.threatloom.app.domain.model.CategoryInsight
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 class GenerateCategoryInsightUseCase @Inject constructor(
@@ -42,7 +44,7 @@ Produce a JSON object with exactly two keys:
    * Recommended priority areas for security teams
 
 Use markdown formatting (headings, bold, bullet lists) to make the text scannable.
-Be specific and cite patterns from the provided articles.
+Be specific and cite patterns from the provided articles. Every claim in "trend" and every prediction in "forecast" must be traceable to something described in the articles — do not introduce actors, tools, or developments that have no basis in the provided summaries.
 Respond ONLY with valid JSON."""
     }
 
@@ -71,9 +73,9 @@ Respond ONLY with valid JSON."""
         subcategoryTag: String? = null,
         preFilteredArticles: List<com.threatloom.app.domain.model.ArticleWithSummary>? = null
     ): CategoryInsight? {
-        if (!llmService.hasApiKey()) return null
+        if (!llmService.hasApiKey(LlmFeature.CATEGORY_INSIGHT)) return null
 
-        val model = llmService.getModelName()
+        val model = llmService.getModelName(LlmFeature.CATEGORY_INSIGHT)
         val articles = preFilteredArticles ?: categorizeArticlesUseCase.getArticlesForCategory(categoryName)
         if (articles.size < 3) return null
 
@@ -105,6 +107,7 @@ Respond ONLY with valid JSON."""
         for (attempt in 0 until 3) {
             try {
                 val llmResult = llmService.chatCompletion(
+                    feature = LlmFeature.CATEGORY_INSIGHT,
                     systemPrompt = prompt,
                     messages = listOf(
                         ChatMessageDto("user", "Category: $contextLabel\nArticle count: ${articles.size}\n\n$inputText")
@@ -120,6 +123,8 @@ Respond ONLY with valid JSON."""
 
                 categoryInsightRepository.upsert(cacheKey, result.trend, result.forecast, articles.size, currentHash, model)
                 return CategoryInsight(cacheKey, result.trend, result.forecast, articles.size, currentHash, model)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (attempt < 2) delay((attempt + 1) * 1000L)
             }

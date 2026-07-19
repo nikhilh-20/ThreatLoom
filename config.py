@@ -66,6 +66,7 @@ def get_default_config():
         "report_token": "",
         "dedup_enabled": True,
         "dedup_threshold": 0.85,
+        "kaido_blog_enabled": True,
     }
 
 

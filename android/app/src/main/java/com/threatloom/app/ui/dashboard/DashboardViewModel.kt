@@ -16,6 +16,7 @@ import com.threatloom.app.domain.usecase.ActualCostInfo
 import com.threatloom.app.domain.usecase.CategorizeArticlesUseCase
 import com.threatloom.app.domain.usecase.CostEstimate
 import com.threatloom.app.domain.usecase.EmbedArticlesUseCase
+import com.threatloom.app.domain.usecase.FetchKaidoBlogUseCase
 import com.threatloom.app.domain.usecase.ProcessCustomUrlsUseCase
 import com.threatloom.app.domain.usecase.ReprocessFailuresUseCase
 import com.threatloom.app.domain.usecase.RunPipelineUseCase
@@ -116,6 +117,7 @@ class DashboardViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             sourceRepository.initializeDefaultFeeds()
+            sourceRepository.upsertSource(FetchKaidoBlogUseCase.BLOG_SOURCE_NAME, FetchKaidoBlogUseCase.BLOG_SOURCE_URL)
             loadData()
         }
         viewModelScope.launch {

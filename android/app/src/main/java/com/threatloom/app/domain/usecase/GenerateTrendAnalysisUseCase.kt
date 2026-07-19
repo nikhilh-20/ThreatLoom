@@ -5,6 +5,7 @@ import com.threatloom.app.data.remote.dto.ChatMessageDto
 import com.threatloom.app.data.remote.dto.QuarterlyTrendResult
 import com.threatloom.app.data.repository.TrendAnalysisRepository
 import com.threatloom.app.domain.model.ArticleWithSummary
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.model.TrendAnalysis
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
@@ -12,6 +13,7 @@ import com.threatloom.app.util.AppLogger
 import com.threatloom.app.util.DateUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -108,12 +110,12 @@ Respond ONLY with valid JSON."""
         preFilteredArticles: List<ArticleWithSummary>? = null,
         onProgress: (String) -> Unit = {}
     ): Pair<List<TrendAnalysis>, List<TrendAnalysis>> {
-        if (!llmService.hasApiKey()) {
+        if (!llmService.hasApiKey(LlmFeature.TREND_ANALYSIS)) {
             onProgress("No API key configured")
             return Pair(emptyList(), emptyList())
         }
 
-        val model = llmService.getModelName()
+        val model = llmService.getModelName(LlmFeature.TREND_ANALYSIS)
         val parallelRequests = settingsDataStore.parallelRequests.first().coerceIn(1, 20)
 
         onProgress("Loading articles for $categoryName...")
@@ -289,6 +291,7 @@ Respond ONLY with valid JSON."""
         return try {
             val prompt = BATCH_SUMMARY_PROMPT.replace("{category}", categoryName)
             val llmResult = llmService.chatCompletion(
+                feature = LlmFeature.TREND_ANALYSIS,
                 systemPrompt = prompt,
                 messages = listOf(ChatMessageDto("user", batchText)),
                 temperature = 0.3f,
@@ -300,6 +303,8 @@ Respond ONLY with valid JSON."""
             val result = moshi.adapter(Map::class.java).fromJson(llmResult.content)
             @Suppress("UNCHECKED_CAST")
             (result as? Map<String, Any>)?.get("trend") as? String
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             appLogger.e(TAG, "Batch summarization failed: ${e.message}")
             null
@@ -328,6 +333,7 @@ Respond ONLY with valid JSON."""
             }
 
             val llmResult = llmService.chatCompletion(
+                feature = LlmFeature.TREND_ANALYSIS,
                 systemPrompt = promptTemplate,
                 messages = listOf(
                     ChatMessageDto("user", "Category: $categoryName\nPeriod: ${quarterKey.label}\nArticle count: $articleCount\n\n$summaryText")
@@ -341,6 +347,8 @@ Respond ONLY with valid JSON."""
 
             val result = resultAdapter.fromJson(llmResult.content) ?: return null
             formatTrendResult(result)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             appLogger.e(TAG, "Quarterly trend generation failed for ${quarterKey.label}: ${e.message}")
             null
@@ -372,6 +380,7 @@ Respond ONLY with valid JSON."""
             }
 
             val llmResult = llmService.chatCompletion(
+                feature = LlmFeature.TREND_ANALYSIS,
                 systemPrompt = promptTemplate,
                 messages = listOf(
                     ChatMessageDto("user", "Category: $categoryName\nYear: $year\nQuarters covered: ${quarterlyTrends.size}")
@@ -385,6 +394,8 @@ Respond ONLY with valid JSON."""
 
             val result = resultAdapter.fromJson(llmResult.content) ?: return null
             formatTrendResult(result)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             appLogger.e(TAG, "Yearly trend generation failed for $year: ${e.message}")
             null

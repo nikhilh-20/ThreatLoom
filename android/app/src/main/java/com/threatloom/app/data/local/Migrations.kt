@@ -25,3 +25,25 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         )
     }
 }
+
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `saved_category_chats` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `category_name` TEXT NOT NULL,
+                `title` TEXT,
+                `messages` TEXT,
+                `total_cost` REAL NOT NULL,
+                `model_used` TEXT,
+                `created_date` TEXT DEFAULT CURRENT_TIMESTAMP,
+                `updated_date` TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_saved_category_chats_category_name` ON `saved_category_chats` (`category_name`)"
+        )
+    }
+}

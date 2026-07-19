@@ -391,15 +391,17 @@ def get_unsummarized_articles(limit=10, article_ids=None):
         article_ids: Optional list of article IDs to restrict results to.
 
     Returns:
-        List of dicts with ``id``, ``title``, ``url``, and ``content_raw``.
+        List of dicts with ``id``, ``title``, ``url``, ``content_raw``, and
+        ``source_name``.
     """
     conn = get_connection()
     if article_ids:
         placeholders = ",".join("?" * len(article_ids))
         rows = conn.execute(
             f"""
-            SELECT a.id, a.title, a.url, a.content_raw
+            SELECT a.id, a.title, a.url, a.content_raw, s.name AS source_name
             FROM articles a
+            JOIN sources s ON a.source_id = s.id
             LEFT JOIN summaries sm ON sm.article_id = a.id
             WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
               AND a.duplicate_of_id IS NULL
@@ -412,8 +414,9 @@ def get_unsummarized_articles(limit=10, article_ids=None):
     else:
         rows = conn.execute(
             """
-            SELECT a.id, a.title, a.url, a.content_raw
+            SELECT a.id, a.title, a.url, a.content_raw, s.name AS source_name
             FROM articles a
+            JOIN sources s ON a.source_id = s.id
             LEFT JOIN summaries sm ON sm.article_id = a.id
             WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
               AND a.duplicate_of_id IS NULL
@@ -930,6 +933,37 @@ def get_article_ids_since_days(since_days, model_used=None):
     return {row["article_id"] for row in rows}
 
 
+def get_article_ids_for_category(category_name):
+    """Return the set of article IDs whose tags map to the given broad category.
+
+    Args:
+        category_name: Broad category name (e.g. ``"Malware"``).
+
+    Returns:
+        A set of integer article IDs.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT a.id, sm.tags
+        FROM articles a
+        JOIN summaries sm ON sm.article_id = a.id
+        WHERE sm.tags IS NOT NULL AND sm.tags != '[]'
+        """
+    ).fetchall()
+    ids = set()
+    for row in rows:
+        try:
+            tags = _json.loads(row["tags"] or "[]")
+        except (_json.JSONDecodeError, TypeError):
+            tags = []
+        for tag in tags:
+            if _tag_to_category(tag) == category_name:
+                ids.add(row["id"])
+                break
+    return ids
+
+
 def get_articles_by_ids(article_ids):
     """Fetch full article and summary data for a list of IDs.
 
@@ -967,6 +1001,7 @@ def get_articles_by_ids(article_ids):
 # Tags not matching any pattern are ignored (the article still appears
 # under whichever broad categories its other tags match).
 _CATEGORY_RULES = [
+    ("Kaido's Blog", ["kaidos-blog"]),
     ("Malware", [
         "malware", "trojan", "backdoor", "infostealer", "info-stealer",
         "stealer", "loader", "dropper", "rootkit", "spyware", "adware",
@@ -1476,6 +1511,22 @@ def save_category_insight(category_name, trend_text, forecast_text,
     conn.commit()
 
 
+def get_articles_by_source(source_id):
+    """Fetch id/url pairs for every article from a given source.
+
+    Args:
+        source_id: Foreign key of the source to scope the query to.
+
+    Returns:
+        List of dicts with ``id`` and ``url``.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, url FROM articles WHERE source_id = ?", (source_id,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete_article(article_id):
     """Delete an article and all its related records.
 
@@ -1680,6 +1731,7 @@ def get_available_tags():
         dict with ``categories`` and ``entities`` lists.
     """
     categories = [
+        {"tag": "kaidos-blog", "label": "Kaido's Blog"},
         {"tag": "malware", "label": "Malware"},
         {"tag": "vulnerability", "label": "Vulnerabilities"},
         {"tag": "threat-actor", "label": "Threat Actors"},

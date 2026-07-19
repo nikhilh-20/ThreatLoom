@@ -24,6 +24,7 @@ class ArticleChatViewModel @Inject constructor(
     private var initialized = false
     private var conversationId: Long? = null
     private var totalCost = 0.0
+    private var totalWebSearchCost = 0.0
     private var latestModel: String? = null
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -38,8 +39,21 @@ class ArticleChatViewModel @Inject constructor(
     private val _sessionCost = MutableStateFlow<Double?>(null)
     val sessionCost: StateFlow<Double?> = _sessionCost.asStateFlow()
 
+    private val _sessionWebSearchCost = MutableStateFlow<Double?>(null)
+    val sessionWebSearchCost: StateFlow<Double?> = _sessionWebSearchCost.asStateFlow()
+
     private val _sessionModel = MutableStateFlow<String?>(null)
     val sessionModel: StateFlow<String?> = _sessionModel.asStateFlow()
+
+    private val _webSearchEnabled = MutableStateFlow(false)
+    val webSearchEnabled: StateFlow<Boolean> = _webSearchEnabled.asStateFlow()
+
+    fun setWebSearchEnabled(enabled: Boolean) {
+        _webSearchEnabled.value = enabled
+    }
+
+    private val _loadingStage = MutableStateFlow("Thinking…")
+    val loadingStage: StateFlow<String> = _loadingStage.asStateFlow()
 
     private val _isSaved = MutableStateFlow(false)
     val isSaved: StateFlow<Boolean> = _isSaved.asStateFlow()
@@ -92,13 +106,16 @@ class ArticleChatViewModel @Inject constructor(
         _messages.value = _messages.value + userMsg
         viewModelScope.launch {
             _isLoading.value = true
+            _loadingStage.value = if (_webSearchEnabled.value) "Thinking (web search available)…" else "Thinking…"
             val before = costTracker.getSnapshot()
-            val response = articleChatUseCase(history, articleId)
+            val response = articleChatUseCase(history, articleId, _webSearchEnabled.value)
             val after = costTracker.getSnapshot()
             val model = response.modelUsed ?: latestModel ?: ""
             totalCost += costTracker.deltaCost(before, after, model)
+            totalWebSearchCost += costTracker.webSearchDeltaCost(before, after)
             latestModel = model.ifBlank { latestModel }
             _sessionCost.value = totalCost
+            _sessionWebSearchCost.value = totalWebSearchCost
             _sessionModel.value = latestModel
             _messages.value = _messages.value + response
             _isLoading.value = false

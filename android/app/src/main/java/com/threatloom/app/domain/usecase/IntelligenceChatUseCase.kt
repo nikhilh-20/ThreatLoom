@@ -6,6 +6,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.threatloom.app.data.remote.dto.ChatMessageDto
 import com.threatloom.app.domain.model.ArticleWithSummary
 import com.threatloom.app.domain.model.ChatMessage
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.DateUtils
 import java.util.Calendar
@@ -20,6 +21,7 @@ class IntelligenceChatUseCase @Inject constructor(
     companion object {
         private const val MAX_CONTEXT_CHARS = 30000
         private const val MAX_CONVERSATION_MESSAGES = 6
+        private const val WEB_SEARCH_ADDENDUM = "\n\nYou have access to a web search tool. Use it when: (1) the user's question needs current or live information not covered by the context provided above, or (2) the provided articles lack a concrete real-world example to illustrate a technique or concept the user is asking about. Whenever you source an example via web search, cite it as a markdown link in the format [Title](URL) so the source is clearly attributed and tappable. Search only until you have enough information to answer confidently — a small number of targeted searches is usually sufficient; do not search exhaustively."
 
         private const val SYSTEM_PROMPT = """You are an expert cybersecurity threat intelligence analyst with deep knowledge of malware, vulnerabilities, threat actors, attack techniques, and defensive strategies.
 
@@ -66,7 +68,8 @@ Guidelines for in-scope questions:
 - For analytical queries: Provide a comprehensive synthesis drawing from multiple articles with citations.
 - If no relevant articles are found, say so honestly and offer what you can from general knowledge.
 - Be concise but thorough. Use markdown formatting for readability.
-- Do not fabricate article titles or content that wasn't provided."""
+- Do not fabricate article titles or content that wasn't provided.
+- When explaining techniques or concepts — especially when the user asks for examples — draw them directly from the provided articles: specific malware families, campaigns, code patterns, or behaviors actually described in the context. Prefer grounded, article-sourced examples over constructed or hypothetical ones ("malware can do X"). If the articles lack a concrete example and web search is available, use it to find a real-world one and cite the source URL. Only fall back to generic hypothetical examples when neither the articles nor web search yield a concrete illustration."""
     }
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -117,34 +120,44 @@ Guidelines for in-scope questions:
         return "Retrieved ${parts.size} relevant articles:\n\n${parts.joinToString("\n")}"
     }
 
-    suspend operator fun invoke(messages: List<ChatMessage>, topK: Int = 15): ChatMessage {
-        if (!llmService.hasApiKey()) return ChatMessage("assistant", "Please configure your API key in Settings.", emptyList())
+    suspend operator fun invoke(
+        messages: List<ChatMessage>,
+        webSearchEnabled: Boolean = false,
+        topK: Int = 15,
+        onProgress: (String) -> Unit = {}
+    ): ChatMessage {
+        if (!llmService.hasApiKey(LlmFeature.INTELLIGENCE_CHAT)) return ChatMessage("assistant", "Please configure your API key in Settings.", emptyList())
 
-        val model = llmService.getModelName()
+        val model = llmService.getModelName(LlmFeature.INTELLIGENCE_CHAT)
         val userMessages = messages.filter { it.role == "user" }
         if (userMessages.isEmpty()) return ChatMessage("assistant", "Please ask a question about threat intelligence.", emptyList())
 
         val query = userMessages.last().content
         val sinceDays = extractSinceDays(query)
         val sinceDate = sinceDays?.let { daysToSinceDate(it) }
+        onProgress("Retrieving articles…")
         val articles = semanticSearchUseCase(query, topK, sinceDate)
         val context = buildContext(articles)
 
+        val systemPrompt = if (webSearchEnabled) SYSTEM_PROMPT + WEB_SEARCH_ADDENDUM else SYSTEM_PROMPT
         val llmMessages = mutableListOf(
-            ChatMessageDto("system", SYSTEM_PROMPT),
+            ChatMessageDto("system", systemPrompt),
             ChatMessageDto("system", "RETRIEVED ARTICLES:\n\n$context")
         )
         val recent = messages.takeLast(MAX_CONVERSATION_MESSAGES)
         llmMessages.addAll(recent.map { ChatMessageDto(it.role, it.content) })
 
+        onProgress(if (webSearchEnabled) "Thinking (web search available)…" else "Thinking…")
         return try {
-            val answer = llmService.chatCompletion(
+            val result = llmService.chatCompletion(
+                feature = LlmFeature.INTELLIGENCE_CHAT,
                 messages = llmMessages,
                 temperature = 0.3f,
                 maxTokens = 2000,
-                cacheSystemPrompt = true
-            ).content
-            ChatMessage("assistant", answer, articles, model)
+                cacheSystemPrompt = true,
+                enableWebSearch = webSearchEnabled
+            )
+            ChatMessage("assistant", result.content, articles, model, webSearchCount = result.webSearchCalls)
         } catch (e: Exception) {
             ChatMessage("assistant", "Error: ${e.message}", articles, model)
         }

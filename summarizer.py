@@ -1137,13 +1137,16 @@ def summarize_pending(limit=10, article_ids=None):
 
         if result:
             attack_flow = result.get("attack_flow", [])
+            # Kaido's Blog has its own fixed category — override the LLM's tags so
+            # these articles never get classified into malware/vulnerability/etc.
+            tags = ["kaidos-blog"] if article.get("source_name") == "Kaido's Blog" else result["tags"]
             # novelty_notes / network_traffic_reason are no longer produced (Android-aligned
             # schema); pass None so legacy DB columns stay intact but unused for new rows.
             save_summary(
                 article_id=article_id,
                 summary_text=result["summary"],
                 key_points=json.dumps(attack_flow) if attack_flow else None,
-                tags=json.dumps(result["tags"]),
+                tags=json.dumps(tags),
                 novelty_notes=None,
                 model_used=get_model_name(),
                 network_traffic_reason=None,

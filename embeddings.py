@@ -9,6 +9,7 @@ from openai import APIError, RateLimitError
 from config import load_config
 from database import (
     get_all_embeddings,
+    get_article_ids_for_category,
     get_article_ids_since_days,
     get_articles_by_ids,
     get_dedup_candidates,
@@ -361,7 +362,7 @@ def cluster_articles_by_similarity(articles, threshold=0.82):
     return clusters
 
 
-def semantic_search(query, top_k=15, since_days=None):
+def semantic_search(query, top_k=15, since_days=None, category=None):
     """Perform semantic search over stored article embeddings.
 
     Embeds the query string, computes cosine similarity against all
@@ -373,6 +374,9 @@ def semantic_search(query, top_k=15, since_days=None):
         top_k: Number of top results to return.
         since_days: If set, restrict search to articles published within
             this many days. None means search all articles.
+        category: If set, restrict search to articles belonging to this
+            broad category (e.g. ``"Malware"``). None means no category
+            restriction.
 
     Returns:
         List of article dicts, each augmented with a ``relevance_score``
@@ -402,6 +406,12 @@ def semantic_search(query, top_k=15, since_days=None):
     if since_days is not None:
         allowed_ids = get_article_ids_since_days(since_days, model_used=EMBEDDING_MODEL)
         all_embs = [e for e in all_embs if e["article_id"] in allowed_ids]
+        if not all_embs:
+            return []
+
+    if category is not None:
+        category_ids = get_article_ids_for_category(category)
+        all_embs = [e for e in all_embs if e["article_id"] in category_ids]
         if not all_embs:
             return []
 

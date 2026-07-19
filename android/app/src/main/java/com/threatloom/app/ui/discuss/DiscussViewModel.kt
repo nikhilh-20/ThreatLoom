@@ -51,6 +51,16 @@ class DiscussViewModel @Inject constructor(
     private val _hasUnsavedChanges = MutableStateFlow(false)
     val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges.asStateFlow()
 
+    private val _webSearchEnabled = MutableStateFlow(false)
+    val webSearchEnabled: StateFlow<Boolean> = _webSearchEnabled.asStateFlow()
+
+    fun setWebSearchEnabled(enabled: Boolean) {
+        _webSearchEnabled.value = enabled
+    }
+
+    private val _loadingStage = MutableStateFlow("Thinking…")
+    val loadingStage: StateFlow<String> = _loadingStage.asStateFlow()
+
     fun init(id: Long) {
         if (initialized) return
         initialized = true
@@ -82,7 +92,13 @@ class DiscussViewModel @Inject constructor(
         // Seed message is not shown in the UI — the LLM's opening reply is the first visible message
         val seedMessages = listOf(ChatMessage("user", "Let's discuss this topic: $topic\n\nPlease open the debate with your initial perspective in 2-3 sentences, then ask me what I think."))
         val before = costTracker.getSnapshot()
-        val opening = discussUseCase(seedMessages, articleId, topic)
+        val opening = discussUseCase(
+            seedMessages,
+            articleId,
+            topic,
+            _webSearchEnabled.value,
+            onProgress = { stage -> _loadingStage.value = stage }
+        )
         accrueCost(before, opening.modelUsed)
         _messages.value = listOf(opening)
         if (opening.concluded) _concluded.value = true
@@ -105,7 +121,13 @@ class DiscussViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             val before = costTracker.getSnapshot()
-            val response = discussUseCase(history, articleId, topic)
+            val response = discussUseCase(
+                history,
+                articleId,
+                topic,
+                _webSearchEnabled.value,
+                onProgress = { stage -> _loadingStage.value = stage }
+            )
             accrueCost(before, response.modelUsed)
             _messages.value = _messages.value + response
             if (response.concluded) _concluded.value = true

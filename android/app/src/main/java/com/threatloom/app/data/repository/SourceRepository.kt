@@ -28,6 +28,9 @@ class SourceRepository @Inject constructor(
 
     suspend fun getSourceIdByUrl(url: String): Long? = sourceDao.getSourceIdByUrl(url)
 
+    /** Treats a not-yet-created source as enabled, matching pre-first-fetch default. */
+    suspend fun isSourceEnabled(url: String): Boolean = sourceDao.isEnabledByUrl(url) != 0
+
     suspend fun getLastFetched(sourceId: Long): String? = sourceDao.getLastFetched(sourceId)
 
     suspend fun updateLastFetched(sourceId: Long) = sourceDao.updateLastFetched(sourceId)

@@ -194,6 +194,22 @@
     </section>
 
     <section class="settings-section">
+        <h2>Kaido's Blog</h2>
+        <p class="form-hint">Ingests posts from <a href="https://nikhilh-20.github.io/blog/" target="_blank">nikhilh-20.github.io/blog</a>, filed under the "Kaido's Blog" category.</p>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <label class="toggle-label" style="margin:0;">
+                <input type="checkbox" id="kaido-blog-enabled" class="feed-toggle" {% if config.kaido_blog_enabled %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+            </label>
+            <span style="font-size:0.9rem;color:var(--text-primary);font-weight:500;">Ingest Kaido's Blog</span>
+        </div>
+        {% set kaido_blog_source = source_map.get('https://nikhilh-20.github.io/blog/') %}
+        {% if kaido_blog_source and kaido_blog_source.last_fetched %}
+        <p class="form-hint">Last fetched: {{ kaido_blog_source.last_fetched }}</p>
+        {% endif %}
+    </section>
+
+    <section class="settings-section">
         <h2>RSS Feeds</h2>
         <div class="feed-list" id="feed-list">
             {% for feed in config.feeds if feed.name != "Cyber Defense Magazine" %}

@@ -6,6 +6,7 @@ import com.threatloom.app.data.remote.dto.*
 import com.threatloom.app.data.repository.ArticleRepository
 import com.threatloom.app.data.repository.QuizRepository
 import com.threatloom.app.data.repository.SummaryRepository
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.AppLogger
@@ -345,7 +346,7 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
         onRateLimited: (() -> Unit)? = null,
         onEach: (suspend () -> Unit)? = null
     ): Int {
-        if (!llmService.hasApiKey()) return 0
+        if (!llmService.hasApiKey(LlmFeature.SUMMARIZATION)) return 0
 
         val articles = articleRepository.getUnsummarized(500)
         if (articles.isEmpty()) return 0
@@ -364,6 +365,7 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
                             id = article.id,
                             title = article.title,
                             contentRaw = article.content_raw,
+                            sourceName = article.source_name,
                             onRateLimited = {
                                 if (rateLimitNotified.compareAndSet(false, true)) onRateLimited?.invoke()
                             }
@@ -381,19 +383,20 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
 
     /** Pre-summarization cost estimate for a single article, or null when no API key is configured. */
     suspend fun estimateForArticle(): CostEstimate? {
-        if (!llmService.hasApiKey()) return null
-        val model = llmService.getModelName()
+        if (!llmService.hasApiKey(LlmFeature.SUMMARIZATION)) return null
+        val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
         return CostEstimate(articleCount = 1, estimatedCost = costTracker.estimateSummarizationCost(1, model), modelName = model)
     }
 
     /** Re-summarizes a single article by ID, overwriting any existing summary. */
     suspend fun invokeForArticle(articleId: Long): InvokeResult {
-        if (!llmService.hasApiKey()) return InvokeResult.Error("No API key configured")
+        if (!llmService.hasApiKey(LlmFeature.SUMMARIZATION)) return InvokeResult.Error("No API key configured")
         val title = articleRepository.getTitle(articleId) ?: return InvokeResult.Error("Article not found")
         val contentRaw = articleRepository.getContentRaw(articleId) ?: return InvokeResult.Error("No content available")
-        val model = llmService.getModelName()
+        val sourceName = articleRepository.getArticleById(articleId)?.sourceName
+        val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
         val before = costTracker.getSnapshot()
-        val ok = summarizeOne(id = articleId, title = title, contentRaw = contentRaw)
+        val ok = summarizeOne(id = articleId, title = title, contentRaw = contentRaw, sourceName = sourceName)
         return if (ok) {
             quizRepository.deleteByArticleId(articleId)
             InvokeResult.Success(costTracker.deltaCost(before, costTracker.getSnapshot(), model), model)
@@ -406,9 +409,10 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
         id: Long,
         title: String,
         contentRaw: String,
+        sourceName: String? = null,
         onRateLimited: (() -> Unit)? = null
     ): Boolean {
-        val model = llmService.getModelName()
+        val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
         var retryDelayMs = 10_000L
         for (attempt in 1..4) {
             try {
@@ -423,6 +427,7 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
                 }
 
                 val resultJson = llmService.chatCompletion(
+                    feature = LlmFeature.SUMMARIZATION,
                     systemPrompt = SUMMARY_PROMPT,
                     messages = listOf(
                         ChatMessageDto("user", "<article>\n<title>$title</title>\n<content>\n$content\n</content>\n</article>")
@@ -435,9 +440,12 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
 
                 val result = summaryAdapter.fromJson(resultJson) ?: return false
                 val summaryMd = markdownComposer.compose(result)
+                // Kaido's Blog has its own fixed category — override the LLM's tags so
+                // these articles never get classified into malware/vulnerability/etc.
+                val tags = if (sourceName == FetchKaidoBlogUseCase.BLOG_SOURCE_NAME) listOf("kaidos-blog") else result.tags
                 val tagsJson = moshi.adapter<List<String>>(
                     com.squareup.moshi.Types.newParameterizedType(List::class.java, String::class.java)
-                ).toJson(result.tags)
+                ).toJson(tags)
                 val attackFlowJson = moshi.adapter<List<AttackFlowDto>>(
                     com.squareup.moshi.Types.newParameterizedType(List::class.java, AttackFlowDto::class.java)
                 ).toJson(result.attackFlow)

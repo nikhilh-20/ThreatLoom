@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -470,7 +471,9 @@ fun ArticleDetailScreen(
                     .padding(16.dp)
             ) {
                 // Title
-                Text(art.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                SelectionContainer {
+                    Text(art.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Source + date

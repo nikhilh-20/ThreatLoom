@@ -3,6 +3,8 @@ package com.threatloom.app.ui.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.threatloom.app.data.preferences.SettingsDataStore
+import com.threatloom.app.data.repository.SavedCategoryChatRepository
+import com.threatloom.app.data.repository.SavedCategoryChatSummary
 import com.threatloom.app.domain.model.ArticleWithSummary
 import com.threatloom.app.domain.model.SubcategoryGroup
 import com.threatloom.app.domain.model.TrendAnalysis
@@ -13,13 +15,17 @@ import com.threatloom.app.domain.usecase.GenerateCategoryInsightUseCase
 import com.threatloom.app.domain.usecase.GenerateTrendAnalysisUseCase
 import com.threatloom.app.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class InsightCostEstimate(
@@ -44,7 +50,8 @@ class DrilldownViewModel @Inject constructor(
     private val generateTrendAnalysisUseCase: GenerateTrendAnalysisUseCase,
     private val costTracker: CostTracker,
     private val settingsDataStore: SettingsDataStore,
-    private val reportService: ReportService
+    private val reportService: ReportService,
+    private val savedCategoryChatRepository: SavedCategoryChatRepository
 ) : ViewModel() {
 
     private val _articles = MutableStateFlow<List<ArticleWithSummary>>(emptyList())
@@ -88,9 +95,15 @@ class DrilldownViewModel @Inject constructor(
     private val _reportStatus = MutableStateFlow<String?>(null)
     val reportStatus: StateFlow<String?> = _reportStatus.asStateFlow()
 
+    private val _savedChats = MutableStateFlow<List<SavedCategoryChatSummary>>(emptyList())
+    val savedChats: StateFlow<List<SavedCategoryChatSummary>> = _savedChats.asStateFlow()
+
     // Subcategory context — null when viewing a top-level category
     private var subcategoryTag: String? = null
     private var currentCategoryName: String = ""
+
+    private var trendJob: Job? = null
+    private var forecastJob: Job? = null
 
     fun setTimeFilter(days: Int) {
         _selectedDays.value = days
@@ -130,8 +143,18 @@ class DrilldownViewModel @Inject constructor(
             try {
                 _articles.value = categorizeArticlesUseCase.getArticlesForCategory(categoryName, sinceDate = cutoff)
                 _subcategories.value = categorizeArticlesUseCase.getSubcategories(categoryName, sinceDate = cutoff)
+                _savedChats.value = savedCategoryChatRepository.getAllByCategory(categoryName)
             } catch (_: Exception) {}
             _isLoading.value = false
+        }
+    }
+
+    fun deleteChat(id: Long) {
+        viewModelScope.launch {
+            try {
+                savedCategoryChatRepository.delete(id)
+                _savedChats.value = _savedChats.value.filterNot { it.id == id }
+            } catch (_: Exception) {}
         }
     }
 
@@ -151,7 +174,7 @@ class DrilldownViewModel @Inject constructor(
 
     fun generateTrends(categoryName: String) {
         val cacheKey = buildCacheKey(categoryName)
-        viewModelScope.launch {
+        trendJob = viewModelScope.launch {
             val model = activeModel()
             val articles = _articles.value
             val (estCost, nQ, nY) = costTracker.estimateTrendCost(articles, model)
@@ -164,6 +187,7 @@ class DrilldownViewModel @Inject constructor(
             _isTrendLoading.value = true
             _trendProgress.value = "Starting trend analysis..."
             val before = costTracker.getSnapshot()
+            var aborted = false
             try {
                 val (quarterly, yearly) = generateTrendAnalysisUseCase(
                     categoryName = cacheKey,
@@ -174,15 +198,26 @@ class DrilldownViewModel @Inject constructor(
                 _yearlyTrends.value = yearly
                 val actual = costTracker.deltaCost(before, costTracker.getSnapshot(), model)
                 _insightActualCost.value = InsightActualCost(articles.size, actual, model, "trend")
-            } catch (_: Exception) {
+            } catch (e: CancellationException) {
+                aborted = true
+            } catch (e: Exception) {
                 _trendProgress.value = "Trend analysis failed"
+            } finally {
+                withContext(NonCancellable) {
+                    if (aborted) _trendProgress.value = "Trend analysis aborted"
+                    _isTrendLoading.value = false
+                }
             }
-            _isTrendLoading.value = false
         }
     }
 
+    fun abortTrendGeneration() {
+        trendJob?.cancel()
+        trendJob = null
+    }
+
     fun generateForecast(categoryName: String) {
-        viewModelScope.launch {
+        forecastJob = viewModelScope.launch {
             val model = activeModel()
             val articles = _articles.value
             val estCost = costTracker.estimateInsightCost(articles.size, model)
@@ -203,9 +238,20 @@ class DrilldownViewModel @Inject constructor(
                 _forecastText.value = insight?.forecastText
                 val actual = costTracker.deltaCost(before, costTracker.getSnapshot(), model)
                 _insightActualCost.value = InsightActualCost(articles.size, actual, model, "forecast")
-            } catch (_: Exception) {}
-            _isForecastLoading.value = false
+            } catch (e: CancellationException) {
+                // aborted — no forecast text to show
+            } catch (_: Exception) {
+            } finally {
+                withContext(NonCancellable) {
+                    _isForecastLoading.value = false
+                }
+            }
         }
+    }
+
+    fun abortForecastGeneration() {
+        forecastJob?.cancel()
+        forecastJob = null
     }
 
     fun sendTrendReport(userNote: String) {

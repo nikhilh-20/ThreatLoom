@@ -10,4 +10,7 @@ interface OpenAiApi {
 
     @POST("v1/embeddings")
     suspend fun embeddings(@Body request: EmbeddingRequest): EmbeddingResponse
+
+    @POST("v1/responses")
+    suspend fun createResponse(@Body request: OpenAiResponsesRequest): OpenAiResponsesResponse
 }

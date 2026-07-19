@@ -140,7 +140,7 @@ def _build_context(articles):
     return f"Retrieved {len(parts)} relevant articles:\n\n" + "\n".join(parts)
 
 
-def chat(messages, top_k=15, since_days=None):
+def chat(messages, top_k=15, since_days=None, category=None):
     """RAG-based chat: retrieve relevant articles, then generate a response.
 
     Extracts the latest user message, performs semantic search to find
@@ -156,6 +156,8 @@ def chat(messages, top_k=15, since_days=None):
             many days. If None, the value is auto-detected from the
             user's query (e.g. "last 24 hours" → 1 day). Pass 0 to
             explicitly search all articles.
+        category: If set, restrict retrieval to articles belonging to this
+            broad category (e.g. ``"Malware"``).
 
     Returns:
         A dict with keys:
@@ -164,6 +166,7 @@ def chat(messages, top_k=15, since_days=None):
             - ``model_used``: The OpenAI model name used.
             - ``error``: Error string or None on success.
             - ``since_days``: The time window applied (int or None).
+            - ``category``: The category scope applied (str or None).
     """
     if not has_api_key():
         return {
@@ -172,6 +175,7 @@ def chat(messages, top_k=15, since_days=None):
             "model_used": None,
             "error": "no_api_key",
             "since_days": None,
+            "category": category,
         }
 
     model = get_model_name()
@@ -185,6 +189,7 @@ def chat(messages, top_k=15, since_days=None):
             "model_used": model,
             "error": None,
             "since_days": None,
+            "category": category,
         }
 
     query = user_messages[-1]["content"]
@@ -194,11 +199,17 @@ def chat(messages, top_k=15, since_days=None):
     if effective_since == 0:
         effective_since = None
 
-    # Semantic search for relevant articles (optionally time-filtered)
-    articles = semantic_search(query, top_k=top_k, since_days=effective_since)
+    # Semantic search for relevant articles (optionally time- and category-filtered)
+    articles = semantic_search(query, top_k=top_k, since_days=effective_since, category=category)
 
     # Build context from retrieved articles
     context = _build_context(articles)
+    scope_note = (
+        f'NOTE: This conversation is scoped to the "{category}" category. '
+        f"All retrieved articles below belong to that category.\n\n"
+        if category
+        else ""
+    )
 
     # Split system into two blocks so the static instructions and the dynamic
     # article context can each be cached independently by the Anthropic API.
@@ -212,7 +223,7 @@ def chat(messages, top_k=15, since_days=None):
         },
         {
             "type": "text",
-            "text": f"RETRIEVED ARTICLES:\n\n{context}",
+            "text": f"{scope_note}RETRIEVED ARTICLES:\n\n{context}",
             "cache_control": {"type": "ephemeral"},
         },
     ]
@@ -236,6 +247,7 @@ def chat(messages, top_k=15, since_days=None):
                 "model_used": model,
                 "error": None,
                 "since_days": effective_since,
+                "category": category,
             }
         except Exception as e:
             is_rate = "429" in str(e) or "rate limit" in str(e).lower() or type(e).__name__ == "RateLimitError"
@@ -254,6 +266,7 @@ def chat(messages, top_k=15, since_days=None):
                     "model_used": model,
                     "error": str(e),
                     "since_days": effective_since,
+                    "category": category,
                 }
 
     return {
@@ -262,4 +275,5 @@ def chat(messages, top_k=15, since_days=None):
         "model_used": model,
         "error": "Failed after 3 retries",
         "since_days": effective_since,
+        "category": category,
     }

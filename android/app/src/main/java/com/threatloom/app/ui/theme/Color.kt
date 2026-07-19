@@ -28,4 +28,5 @@ val CategoryColors = listOf(
     Color(0xFF39D2C0), // Botnet & DDoS - Cyan
     Color(0xFFDB6D28), // C2 & Tooling - Dark Orange
     Color(0xFF8B949E), // IoT & Hardware - Gray
+    Color(0xFFE3B341), // Kaido's Blog - Gold
 )

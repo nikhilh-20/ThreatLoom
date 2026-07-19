@@ -42,6 +42,16 @@ class IntelligenceViewModel @Inject constructor(
     private val _reportStatus = MutableStateFlow<String?>(null)
     val reportStatus: StateFlow<String?> = _reportStatus.asStateFlow()
 
+    private val _webSearchEnabled = MutableStateFlow(false)
+    val webSearchEnabled: StateFlow<Boolean> = _webSearchEnabled.asStateFlow()
+
+    fun setWebSearchEnabled(enabled: Boolean) {
+        _webSearchEnabled.value = enabled
+    }
+
+    private val _loadingStage = MutableStateFlow("Thinking…")
+    val loadingStage: StateFlow<String> = _loadingStage.asStateFlow()
+
     init {
         viewModelScope.launch { loadEmbeddingStatus() }
     }
@@ -73,7 +83,11 @@ class IntelligenceViewModel @Inject constructor(
         _messages.value = history
         viewModelScope.launch {
             _isLoading.value = true
-            val response = intelligenceChatUseCase(history)
+            val response = intelligenceChatUseCase(
+                history,
+                _webSearchEnabled.value,
+                onProgress = { stage -> _loadingStage.value = stage }
+            )
             _messages.value = _messages.value + response
             _isLoading.value = false
         }

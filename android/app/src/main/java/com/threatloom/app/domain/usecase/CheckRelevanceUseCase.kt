@@ -3,6 +3,7 @@ package com.threatloom.app.domain.usecase
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.threatloom.app.data.remote.dto.*
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.AppLogger
 import javax.inject.Inject
@@ -44,7 +45,7 @@ Respond with a JSON object: {"relevant": [true, false, ...]} — one boolean per
     suspend operator fun invoke(titles: List<String>): List<Boolean> {
         if (titles.isEmpty()) return emptyList()
 
-        if (!llmService.hasApiKey()) return List(titles.size) { true }
+        if (!llmService.hasApiKey(LlmFeature.RELEVANCE_CHECK)) return List(titles.size) { true }
 
         val results = mutableListOf<Boolean>()
 
@@ -55,6 +56,7 @@ Respond with a JSON object: {"relevant": [true, false, ...]} — one boolean per
 
             try {
                 val resultJson = llmService.chatCompletion(
+                    feature = LlmFeature.RELEVANCE_CHECK,
                     messages = listOf(ChatMessageDto("user", prompt)),
                     temperature = 0f,
                     maxTokens = 300,

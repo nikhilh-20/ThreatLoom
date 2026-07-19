@@ -86,7 +86,9 @@ class SavedChatRepository @Inject constructor(
                     title = generateTitle(messages),
                     messages = messagesJson,
                     totalCost = totalCost,
-                    modelUsed = modelUsed
+                    modelUsed = modelUsed,
+                    createdDate = DateUtils.nowIso(),
+                    updatedDate = DateUtils.nowIso()
                 )
             )
         }

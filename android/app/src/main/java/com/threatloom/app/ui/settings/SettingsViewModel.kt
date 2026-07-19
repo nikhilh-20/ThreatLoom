@@ -8,6 +8,7 @@ import com.threatloom.app.data.preferences.SettingsDataStore
 import com.threatloom.app.data.repository.ArticleRepository
 import com.threatloom.app.data.repository.SourceRepository
 import com.threatloom.app.domain.model.Source
+import com.threatloom.app.domain.usecase.FetchKaidoBlogUseCase
 import com.threatloom.app.util.AppEvent
 import com.threatloom.app.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -45,6 +46,14 @@ class SettingsViewModel @Inject constructor(
 
     private val _testResult = MutableStateFlow<String?>(null)
     val testResult: StateFlow<String?> = _testResult.asStateFlow()
+
+    init {
+        // Ensure the Kaido's Blog pseudo-source row exists so its enable toggle
+        // renders even before the pipeline has ever fetched it.
+        viewModelScope.launch {
+            sourceRepository.upsertSource(FetchKaidoBlogUseCase.BLOG_SOURCE_NAME, FetchKaidoBlogUseCase.BLOG_SOURCE_URL)
+        }
+    }
 
     fun setOpenaiApiKey(value: String) = viewModelScope.launch { settingsDataStore.setOpenaiApiKey(value) }
     fun setMalpediaApiKey(value: String) = viewModelScope.launch { settingsDataStore.setMalpediaApiKey(value) }

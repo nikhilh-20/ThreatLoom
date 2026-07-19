@@ -22,12 +22,14 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.material.icons.filled.BugReport
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.threatloom.app.domain.model.LlmModelCatalog
 import com.threatloom.app.ui.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onViewLogsClick: () -> Unit = {},
+    onModelSettingsClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val apiKey by viewModel.openaiApiKey.collectAsState()
@@ -96,7 +98,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val openaiModels = listOf("gpt-5.4-nano", "gpt-5-mini")
+                val openaiModels = LlmModelCatalog.OPENAI_MODELS
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                     OutlinedTextField(
@@ -120,7 +122,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val anthropicModels = listOf("claude-haiku-4-5-20251001", "claude-sonnet-4-6")
+                val anthropicModels = LlmModelCatalog.ANTHROPIC_MODELS
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                     OutlinedTextField(
@@ -147,6 +149,11 @@ fun SettingsScreen(
             if (llmProvider == "openai") {
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(onClick = { viewModel.testApiKey() }, modifier = Modifier.fillMaxWidth()) { Text("Test API Key") }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onModelSettingsClick, modifier = Modifier.fillMaxWidth()) {
+                Text("Per-Feature Model Settings")
             }
         }
 
@@ -235,8 +242,28 @@ fun SettingsScreen(
             }
         }
 
+        SettingsSection("Kaido's Blog") {
+            val kaidoBlogSource = sources.find { it.name == "Kaido's Blog" }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Ingest Kaido's Blog", style = MaterialTheme.typography.bodyMedium)
+                Switch(
+                    checked = kaidoBlogSource?.enabled ?: true,
+                    onCheckedChange = { checked -> kaidoBlogSource?.let { viewModel.toggleSource(it.id, checked) } }
+                )
+            }
+            Text(
+                "Adds posts from nikhilh-20.github.io/blog under the \"Kaido's Blog\" category.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         SettingsSection("RSS Feeds") {
-            sources.filter { it.name != "Malpedia" && it.name != "Manual" && it.name != "Cyber Defense Magazine" }.forEach { source ->
+            sources.filter { it.name != "Malpedia" && it.name != "Manual" && it.name != "Cyber Defense Magazine" && it.name != "Kaido's Blog" }.forEach { source ->
                 FeedItem(source = source, onToggle = { viewModel.toggleSource(source.id, it) }, onDelete = { viewModel.deleteSource(source.id) })
             }
             Spacer(modifier = Modifier.height(8.dp))

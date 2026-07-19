@@ -54,6 +54,8 @@ class ArticleRepository @Inject constructor(
         return articleDao.existsByUrl(url) != null
     }
 
+    suspend fun getIdsAndUrlsBySource(sourceId: Long) = articleDao.getIdsAndUrlsBySourceId(sourceId)
+
     suspend fun insert(sourceId: Long, title: String, url: String, author: String?, publishedDate: String?, imageUrl: String?): Long {
         return articleDao.insert(ArticleEntity(
             sourceId = sourceId, title = title, url = url,

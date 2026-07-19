@@ -2,6 +2,7 @@ package com.threatloom.app.domain.usecase
 
 import com.threatloom.app.data.preferences.SettingsDataStore
 import com.threatloom.app.data.repository.ArticleRepository
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.AppLogger
@@ -48,6 +49,7 @@ data class ActualCostInfo(
 class RunPipelineUseCase @Inject constructor(
     private val fetchFeedsUseCase: FetchFeedsUseCase,
     private val fetchMalpediaUseCase: FetchMalpediaUseCase,
+    private val fetchKaidoBlogUseCase: FetchKaidoBlogUseCase,
     private val scrapeArticlesUseCase: ScrapeArticlesUseCase,
     private val deduplicateArticlesUseCase: DeduplicateArticlesUseCase,
     private val summarizeArticlesUseCase: SummarizeArticlesUseCase,
@@ -85,7 +87,11 @@ class RunPipelineUseCase @Inject constructor(
         val newFromMalpedia = fetchMalpediaUseCase(lookbackDays)
         appLogger.i(TAG, "Fetched $newFromMalpedia new articles from Malpedia")
 
-        val newArticles = newFromFeeds + newFromMalpedia
+        onProgress?.invoke(PipelineProgress("fetch", "Fetching Kaido's Blog…"))
+        val newFromBlog = fetchKaidoBlogUseCase()
+        appLogger.i(TAG, "Fetched $newFromBlog new articles from Kaido's Blog")
+
+        val newArticles = newFromFeeds + newFromMalpedia + newFromBlog
         appLogger.i(TAG, "Total new articles: $newArticles")
 
         // Scrape — parallel (processes all unscraped articles)
@@ -108,8 +114,8 @@ class RunPipelineUseCase @Inject constructor(
         val toSummarize = articleRepository.countUnsummarized()
         var summarizationSkipped = false
 
-        if (toSummarize > 0 && onConfirmCost != null && llmService.hasApiKey()) {
-            val model = llmService.getModelName()
+        if (toSummarize > 0 && onConfirmCost != null && llmService.hasApiKey(LlmFeature.SUMMARIZATION)) {
+            val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
             val estimate = costTracker.estimateSummarizationCost(toSummarize, model)
             val costEstimate = CostEstimate(toSummarize, estimate, model)
 
@@ -136,7 +142,7 @@ class RunPipelineUseCase @Inject constructor(
             summarizeFailed = toSummarize - actualSummarized
             appLogger.i(TAG, "Summarized $actualSummarized/$toSummarize articles ($summarizeFailed failed)")
 
-            val model = llmService.getModelName()
+            val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
             val actualCost = costTracker.getSessionCost(model)
             onActualCost?.invoke(ActualCostInfo(actualSummarized, actualCost, model))
             appLogger.i(TAG, "Pipeline summarization complete (actual cost: \$${"%.2f".format(actualCost)})")

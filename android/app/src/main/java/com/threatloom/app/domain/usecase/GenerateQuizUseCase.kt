@@ -6,6 +6,7 @@ import com.threatloom.app.data.remote.dto.ChatMessageDto
 import com.threatloom.app.data.remote.dto.QuizResult
 import com.threatloom.app.data.repository.QuizRepository
 import com.threatloom.app.data.repository.SummaryRepository
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import javax.inject.Inject
@@ -62,16 +63,17 @@ Respond ONLY with valid JSON."""
     }
 
     suspend operator fun invoke(articleId: Long): Result {
-        if (!llmService.hasApiKey()) return Result.Error("No API key configured")
+        if (!llmService.hasApiKey(LlmFeature.QUIZ)) return Result.Error("No API key configured")
 
         val summaryText = summaryRepository.getSummaryText(articleId)
         if (summaryText.isNullOrBlank()) return Result.Error("No summary found. Run the pipeline first.")
 
         return try {
-            val model = llmService.getModelName()
+            val model = llmService.getModelName(LlmFeature.QUIZ)
             val before = costTracker.getSnapshot()
 
             val resultJson = llmService.chatCompletion(
+                feature = LlmFeature.QUIZ,
                 systemPrompt = QUIZ_PROMPT,
                 messages = listOf(
                     ChatMessageDto("user", "Study Notes:\n$summaryText")

@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.threatloom.app.ui.article.ArticleDetailScreen
 import com.threatloom.app.ui.articlechat.ArticleChatScreen
+import com.threatloom.app.ui.categorychat.CategoryChatScreen
 import com.threatloom.app.ui.dashboard.DashboardScreen
 import com.threatloom.app.ui.dashboard.DrilldownScreen
 import com.threatloom.app.ui.dashboard.SubcategoryDrilldownScreen
@@ -15,6 +16,7 @@ import com.threatloom.app.ui.discuss.DiscussScreen
 import com.threatloom.app.ui.intelligence.IntelligenceScreen
 import com.threatloom.app.ui.quiz.QuizScreen
 import com.threatloom.app.ui.logs.LogViewerScreen
+import com.threatloom.app.ui.settings.ModelSettingsScreen
 import com.threatloom.app.ui.settings.SettingsScreen
 
 @Composable
@@ -46,6 +48,12 @@ fun NavGraph(navController: NavHostController) {
                 },
                 onSubcategoryClick = { cat, tag ->
                     navController.navigate(Screen.SubcategoryDrilldown.createRoute(cat, tag))
+                },
+                onChatClick = { cat ->
+                    navController.navigate(Screen.CategoryChat.createRoute(cat))
+                },
+                onOpenChatClick = { cat, convId ->
+                    navController.navigate(Screen.CategoryChat.createRoute(cat, convId))
                 },
                 onBack = { navController.popBackStack() }
             )
@@ -124,6 +132,23 @@ fun NavGraph(navController: NavHostController) {
             )
         }
 
+        composable(
+            route = Screen.CategoryChat.route,
+            arguments = listOf(
+                navArgument("category") { type = NavType.StringType },
+                navArgument("conversationId") { type = NavType.LongType; defaultValue = Screen.CategoryChat.NEW_CONVERSATION_ID }
+            )
+        ) { backStackEntry ->
+            val category = backStackEntry.arguments?.getString("category") ?: ""
+            val rawConversationId = backStackEntry.arguments?.getLong("conversationId") ?: Screen.CategoryChat.NEW_CONVERSATION_ID
+            val conversationId = rawConversationId.takeIf { it != Screen.CategoryChat.NEW_CONVERSATION_ID }
+            CategoryChatScreen(
+                categoryName = category,
+                conversationId = conversationId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Intelligence.route) {
             IntelligenceScreen(
                 onArticleClick = { articleId ->
@@ -134,12 +159,17 @@ fun NavGraph(navController: NavHostController) {
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onViewLogsClick = { navController.navigate(Screen.LogViewer.route) }
+                onViewLogsClick = { navController.navigate(Screen.LogViewer.route) },
+                onModelSettingsClick = { navController.navigate(Screen.ModelSettings.route) }
             )
         }
 
         composable(Screen.LogViewer.route) {
             LogViewerScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Screen.ModelSettings.route) {
+            ModelSettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

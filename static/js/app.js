@@ -158,6 +158,7 @@ function createCategoryCard(category) {
 
 function getCategoryIcon(name) {
     const icons = {
+        'Kaido\'s Blog': '&#9999;',
         'Malware': '&#129440;',
         'Vulnerabilities': '&#128027;',
         'Threat Actors': '&#127946;',
@@ -353,6 +354,11 @@ function openCategory(categoryName) {
             grid.appendChild(createArticleCard(article));
         });
     }
+}
+
+function openCategoryChat() {
+    if (!currentDrilldownCategory) return;
+    window.location.href = '/intelligence?category=' + encodeURIComponent(currentDrilldownCategory);
 }
 
 async function _loadSubcategories(categoryName, cat) {
@@ -1170,6 +1176,7 @@ function saveSettings() {
     const interval = document.getElementById('fetch-interval');
     const dedupEnabled = document.getElementById('dedup-enabled');
     const dedupThreshold = document.getElementById('dedup-threshold');
+    const kaidoBlogEnabled = document.getElementById('kaido-blog-enabled');
     const status = document.getElementById('save-status');
 
     const feedItems = document.querySelectorAll('.feed-item');
@@ -1223,6 +1230,7 @@ function saveSettings() {
         smtp_use_tls: smtpTls ? smtpTls.checked : true,
         dedup_enabled: dedupEnabled ? dedupEnabled.checked : true,
         dedup_threshold: dedupThreshold ? parseFloat(dedupThreshold.value) : 0.85,
+        kaido_blog_enabled: kaidoBlogEnabled ? kaidoBlogEnabled.checked : true,
     };
 
     fetch('/api/settings', {

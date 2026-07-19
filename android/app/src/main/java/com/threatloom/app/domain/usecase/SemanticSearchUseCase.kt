@@ -21,7 +21,12 @@ class SemanticSearchUseCase @Inject constructor(
         private const val EMBEDDING_MODEL = "text-embedding-3-small"
     }
 
-    suspend operator fun invoke(query: String, topK: Int = 15, sinceDate: String? = null): List<ArticleWithSummary> {
+    suspend operator fun invoke(
+        query: String,
+        topK: Int = 15,
+        sinceDate: String? = null,
+        categoryArticleIds: Set<Long>? = null
+    ): List<ArticleWithSummary> {
         val apiKey = settingsDataStore.openaiApiKey.first()
         if (apiKey.isBlank()) return emptyList()
 
@@ -32,10 +37,13 @@ class SemanticSearchUseCase @Inject constructor(
             return emptyList()
         }
 
-        val allEmbeddings = if (sinceDate != null) {
+        var allEmbeddings = if (sinceDate != null) {
             embeddingRepository.getByModelSinceDate(EMBEDDING_MODEL, sinceDate)
         } else {
             embeddingRepository.getByModel(EMBEDDING_MODEL)
+        }
+        if (categoryArticleIds != null) {
+            allEmbeddings = allEmbeddings.filter { it.first in categoryArticleIds }
         }
         if (allEmbeddings.isEmpty()) return emptyList()
 

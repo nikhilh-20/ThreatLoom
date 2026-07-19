@@ -19,11 +19,19 @@ data class AnthropicRequest(
     @Json(name = "max_tokens") val maxTokens: Int = 2000,
     val system: List<AnthropicSystemBlock>? = null,
     val messages: List<AnthropicMessageDto>,
-    val temperature: Float = 0.3f
+    val temperature: Float = 0.3f,
+    val tools: List<AnthropicTool>? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class AnthropicMessageDto(
     val role: String,
     val content: String
+)
+
+@JsonClass(generateAdapter = true)
+data class AnthropicTool(
+    val type: String = "web_search_20250305",
+    val name: String = "web_search",
+    @Json(name = "max_uses") val maxUses: Int = 5
 )

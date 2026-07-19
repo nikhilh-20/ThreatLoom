@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.threatloom.app.domain.model.LlmFeature
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -30,6 +31,39 @@ class SettingsDataStore @Inject constructor(
         val GLOBAL_QUIZ_BEST_SCORE = intPreferencesKey("global_quiz_best_score")
         val DEDUP_ENABLED = booleanPreferencesKey("dedup_enabled")
         val DEDUP_THRESHOLD = floatPreferencesKey("dedup_threshold")
+
+        // Per-feature LLM provider/model overrides. Blank value = "use global default".
+        val ARTICLE_CHAT_PROVIDER = stringPreferencesKey("article_chat_provider")
+        val ARTICLE_CHAT_MODEL = stringPreferencesKey("article_chat_model")
+        val CATEGORY_CHAT_PROVIDER = stringPreferencesKey("category_chat_provider")
+        val CATEGORY_CHAT_MODEL = stringPreferencesKey("category_chat_model")
+        val INTELLIGENCE_CHAT_PROVIDER = stringPreferencesKey("intelligence_chat_provider")
+        val INTELLIGENCE_CHAT_MODEL = stringPreferencesKey("intelligence_chat_model")
+        val DISCUSS_PROVIDER = stringPreferencesKey("discuss_provider")
+        val DISCUSS_MODEL = stringPreferencesKey("discuss_model")
+        val CATEGORY_INSIGHT_PROVIDER = stringPreferencesKey("category_insight_provider")
+        val CATEGORY_INSIGHT_MODEL = stringPreferencesKey("category_insight_model")
+        val TREND_ANALYSIS_PROVIDER = stringPreferencesKey("trend_analysis_provider")
+        val TREND_ANALYSIS_MODEL = stringPreferencesKey("trend_analysis_model")
+        val SUMMARIZATION_PROVIDER = stringPreferencesKey("summarization_provider")
+        val SUMMARIZATION_MODEL = stringPreferencesKey("summarization_model")
+        val RELEVANCE_CHECK_PROVIDER = stringPreferencesKey("relevance_check_provider")
+        val RELEVANCE_CHECK_MODEL = stringPreferencesKey("relevance_check_model")
+        val QUIZ_PROVIDER = stringPreferencesKey("quiz_provider")
+        val QUIZ_MODEL = stringPreferencesKey("quiz_model")
+
+        private fun overrideKeysFor(feature: LlmFeature): Pair<Preferences.Key<String>, Preferences.Key<String>> =
+            when (feature) {
+                LlmFeature.ARTICLE_CHAT -> ARTICLE_CHAT_PROVIDER to ARTICLE_CHAT_MODEL
+                LlmFeature.CATEGORY_CHAT -> CATEGORY_CHAT_PROVIDER to CATEGORY_CHAT_MODEL
+                LlmFeature.INTELLIGENCE_CHAT -> INTELLIGENCE_CHAT_PROVIDER to INTELLIGENCE_CHAT_MODEL
+                LlmFeature.DISCUSS -> DISCUSS_PROVIDER to DISCUSS_MODEL
+                LlmFeature.CATEGORY_INSIGHT -> CATEGORY_INSIGHT_PROVIDER to CATEGORY_INSIGHT_MODEL
+                LlmFeature.TREND_ANALYSIS -> TREND_ANALYSIS_PROVIDER to TREND_ANALYSIS_MODEL
+                LlmFeature.SUMMARIZATION -> SUMMARIZATION_PROVIDER to SUMMARIZATION_MODEL
+                LlmFeature.RELEVANCE_CHECK -> RELEVANCE_CHECK_PROVIDER to RELEVANCE_CHECK_MODEL
+                LlmFeature.QUIZ -> QUIZ_PROVIDER to QUIZ_MODEL
+            }
     }
 
     val openaiApiKey: Flow<String> = context.dataStore.data.map { it[OPENAI_API_KEY] ?: "" }
@@ -59,4 +93,18 @@ class SettingsDataStore @Inject constructor(
     suspend fun setGlobalQuizBestScore(value: Int) { context.dataStore.edit { it[GLOBAL_QUIZ_BEST_SCORE] = value } }
     suspend fun setDedupEnabled(value: Boolean) { context.dataStore.edit { it[DEDUP_ENABLED] = value } }
     suspend fun setDedupThreshold(value: Float) { context.dataStore.edit { it[DEDUP_THRESHOLD] = value } }
+
+    fun featureProvider(feature: LlmFeature): Flow<String> =
+        context.dataStore.data.map { it[overrideKeysFor(feature).first] ?: "" }
+
+    fun featureModel(feature: LlmFeature): Flow<String> =
+        context.dataStore.data.map { it[overrideKeysFor(feature).second] ?: "" }
+
+    suspend fun setFeatureProvider(feature: LlmFeature, value: String) {
+        context.dataStore.edit { it[overrideKeysFor(feature).first] = value }
+    }
+
+    suspend fun setFeatureModel(feature: LlmFeature, value: String) {
+        context.dataStore.edit { it[overrideKeysFor(feature).second] = value }
+    }
 }

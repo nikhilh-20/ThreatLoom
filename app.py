@@ -124,7 +124,8 @@ def settings_page():
 @app.route("/intelligence")
 def intelligence_page():
     """Render the intelligence search and chat page."""
-    return render_template("intelligence.html")
+    category = request.args.get("category")
+    return render_template("intelligence.html", category=category)
 
 
 # === API Routes ===
@@ -573,6 +574,8 @@ def api_settings():
             config["dedup_enabled"] = bool(data["dedup_enabled"])
         if "dedup_threshold" in data:
             config["dedup_threshold"] = max(0.0, min(1.0, float(data["dedup_threshold"])))
+        if "kaido_blog_enabled" in data:
+            config["kaido_blog_enabled"] = bool(data["kaido_blog_enabled"])
 
         save_config(config)
         reschedule_digest()
@@ -945,6 +948,7 @@ def api_intelligence_chat():
 
     Request body (JSON):
         messages: List of conversation message objects.
+        category: Optional broad category name to scope retrieval to.
 
     Returns:
         JSON with ``response``, ``articles``, ``model_used``, ``error``.
@@ -961,7 +965,10 @@ def api_intelligence_chat():
             since_days = int(since_days)
         except (ValueError, TypeError):
             since_days = None
-    result = intelligence_chat(messages, since_days=since_days)
+    category = data.get("category")
+    if category is not None and not isinstance(category, str):
+        category = None
+    result = intelligence_chat(messages, since_days=since_days, category=category)
     return jsonify(result)
 
 

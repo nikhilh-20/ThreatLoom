@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import android.content.Intent
 import android.net.Uri
@@ -217,12 +218,14 @@ private fun AnsweringPhase(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = MaterialTheme.shapes.medium
         ) {
-            Text(
-                text = questionText,
-                modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
-            )
+            SelectionContainer {
+                Text(
+                    text = questionText,
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
 
         // Source article link (global quiz only) and hint button
@@ -265,12 +268,14 @@ private fun AnsweringPhase(
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 shape = MaterialTheme.shapes.small
             ) {
-                Text(
-                    text = hint,
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
+                SelectionContainer {
+                    Text(
+                        text = hint,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
         }
 
@@ -366,7 +371,9 @@ private fun ResultsPhase(
                         Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))
                         Text("Think About This", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
                     }
-                    Text(topic, style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic)
+                    SelectionContainer {
+                        Text(topic, style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic)
+                    }
                 }
             }
         }
@@ -412,18 +419,22 @@ private fun QuizResultItem(
                     Text(verdictLabel, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = verdictColor, fontWeight = FontWeight.Bold)
                 }
             }
-            Text(question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Your answer:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(userAnswer.ifBlank { "(no answer)" }, style = MaterialTheme.typography.bodySmall)
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Model answer:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(modelAnswer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (feedback.isNotBlank()) {
-                Text(feedback, style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = verdictColor)
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(question, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Your answer:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(userAnswer.ifBlank { "(no answer)" }, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Model answer:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(modelAnswer, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (feedback.isNotBlank()) {
+                        Text(feedback, style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = verdictColor)
+                    }
+                }
             }
         }
     }

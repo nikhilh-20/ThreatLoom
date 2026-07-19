@@ -18,6 +18,9 @@ interface SourceDao {
     @Query("SELECT id FROM sources WHERE url = :url")
     suspend fun getSourceIdByUrl(url: String): Long?
 
+    @Query("SELECT enabled FROM sources WHERE url = :url")
+    suspend fun isEnabledByUrl(url: String): Int?
+
     @Query("SELECT last_fetched FROM sources WHERE id = :sourceId")
     suspend fun getLastFetched(sourceId: Long): String?
 

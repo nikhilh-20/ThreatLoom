@@ -7,6 +7,7 @@ package com.threatloom.app.domain.category
 object CategoryRules {
 
     private val CATEGORY_RULES = listOf(
+        "Kaido's Blog" to listOf("kaidos-blog"),
         "Malware" to listOf(
             "malware", "trojan", "backdoor", "infostealer", "info-stealer",
             "stealer", "loader", "dropper", "rootkit", "spyware", "adware",

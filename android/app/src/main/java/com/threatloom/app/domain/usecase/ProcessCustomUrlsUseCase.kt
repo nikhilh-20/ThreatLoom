@@ -3,6 +3,7 @@ package com.threatloom.app.domain.usecase
 import com.threatloom.app.data.preferences.SettingsDataStore
 import com.threatloom.app.data.repository.ArticleRepository
 import com.threatloom.app.data.repository.SourceRepository
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.AppLogger
@@ -83,8 +84,8 @@ class ProcessCustomUrlsUseCase @Inject constructor(
         // Cost confirmation before summarization
         val toSummarize = articleRepository.countUnsummarized()
         var summarizationSkipped = false
-        if (toSummarize > 0 && onConfirmCost != null && llmService.hasApiKey()) {
-            val model = llmService.getModelName()
+        if (toSummarize > 0 && onConfirmCost != null && llmService.hasApiKey(LlmFeature.SUMMARIZATION)) {
+            val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
             val estimate = costTracker.estimateSummarizationCost(toSummarize, model)
             val costEstimate = CostEstimate(toSummarize, estimate, model)
             onProgress?.invoke(PipelineProgress("confirm", "Awaiting cost confirmation…", 0, toSummarize))
@@ -107,7 +108,7 @@ class ProcessCustomUrlsUseCase @Inject constructor(
             summarizeFailed = toSummarize - actualSummarized
             appLogger.i(TAG, "Summarized $actualSummarized/$toSummarize ($summarizeFailed failed)")
 
-            val model = llmService.getModelName()
+            val model = llmService.getModelName(LlmFeature.SUMMARIZATION)
             val actualCost = costTracker.getSessionCost(model)
             onActualCost?.invoke(ActualCostInfo(actualSummarized, actualCost, model))
         }

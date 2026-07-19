@@ -1,5 +1,8 @@
 package com.threatloom.app.ui.intelligence
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -11,9 +14,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
@@ -22,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.threatloom.app.ui.components.ChatBubble
 import com.threatloom.app.ui.components.CitationCard
+import com.threatloom.app.ui.components.WebSearchToggleButton
 import kotlinx.coroutines.launch
 
 private val SUGGESTIONS = listOf(
@@ -41,11 +48,14 @@ fun IntelligenceScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val embeddingStatus by viewModel.embeddingStatus.collectAsState()
     val reportStatus by viewModel.reportStatus.collectAsState()
+    val webSearchEnabled by viewModel.webSearchEnabled.collectAsState()
+    val loadingStage by viewModel.loadingStage.collectAsState()
 
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var reportDialogIndex by remember { mutableIntStateOf(-1) }
+    var isFullscreen by rememberSaveable { mutableStateOf(false) }
 
     // Refresh embedding count each time this screen enters the composition
     LaunchedEffect(Unit) {
@@ -110,204 +120,239 @@ fun IntelligenceScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
-    Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
-            Text(
-                "Intelligence",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-            if (messages.isNotEmpty()) {
-                IconButton(onClick = { viewModel.clearConversation() }) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (!isFullscreen) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp, bottom = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Intelligence",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        WebSearchToggleButton(webSearchEnabled, viewModel::setWebSearchEnabled)
+                        if (messages.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.clearConversation() }) {
+                                Icon(
+                                    Icons.Default.RestartAlt,
+                                    contentDescription = "New conversation",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(onClick = { isFullscreen = true }) {
+                            Icon(Icons.Default.Fullscreen, contentDescription = "Enter fullscreen")
+                        }
+                    }
+                }
+
+                // Chat area
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (messages.isEmpty()) {
+                        // Welcome screen
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    "🔍",
+                                    style = MaterialTheme.typography.displayMedium
+                                )
+                                Text(
+                                    "Intelligence Search & Analysis",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Ask questions about your threat intelligence database. Search for articles by meaning or get analytical insights synthesized from your collected data.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                embeddingStatus?.let { status ->
+                                    val isWarning = status.startsWith("No articles")
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = if (isWarning)
+                                            MaterialTheme.colorScheme.errorContainer
+                                        else
+                                            MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            status,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isWarning)
+                                                MaterialTheme.colorScheme.onErrorContainer
+                                            else
+                                                MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                SUGGESTIONS.forEach { suggestion ->
+                                    SuggestionChip(
+                                        onClick = { viewModel.useSuggestion(suggestion) },
+                                        label = { Text(suggestion, style = MaterialTheme.typography.bodySmall) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    itemsIndexed(messages) { index, message ->
+                        ChatBubble(message = message)
+                        // Report button hidden until a hosted backend is available
+                        if (false && message.role == "assistant") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                IconButton(
+                                    onClick = { reportDialogIndex = index },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Flag,
+                                        contentDescription = "Report this response",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                        // Citation cards below each assistant message that has articles
+                        if (message.role == "assistant" && !message.articles.isNullOrEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(message.articles) { article ->
+                                    CitationCard(
+                                        article = article,
+                                        onClick = { onArticleClick(article.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Loading indicator
+                    if (isLoading) {
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            loadingStage,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = !isFullscreen,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    Column {
+                        HorizontalDivider()
+
+                        // Input row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = query,
+                                onValueChange = { viewModel.updateQuery(it) },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Ask about your threat intelligence…") },
+                                maxLines = 4,
+                                shape = MaterialTheme.shapes.medium,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                )
+                            )
+                            FilledIconButton(
+                                onClick = { viewModel.sendMessage() },
+                                enabled = query.isNotBlank() && !isLoading
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                            }
+                        }
+
+                        // Disclaimer at the very bottom
+                        Text(
+                            text = "Responses are generated using LLMs and may contain errors. Always verify against original sources.",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontStyle = FontStyle.Italic,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            if (isFullscreen) {
+                IconButton(
+                    onClick = { isFullscreen = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                ) {
                     Icon(
-                        Icons.Default.RestartAlt,
-                        contentDescription = "New conversation",
+                        Icons.Default.FullscreenExit,
+                        contentDescription = "Exit fullscreen",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         }
-
-        // Chat area
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            if (messages.isEmpty()) {
-                // Welcome screen
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            "🔍",
-                            style = MaterialTheme.typography.displayMedium
-                        )
-                        Text(
-                            "Intelligence Search & Analysis",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "Ask questions about your threat intelligence database. Search for articles by meaning or get analytical insights synthesized from your collected data.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        embeddingStatus?.let { status ->
-                            val isWarning = status.startsWith("No articles")
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = if (isWarning)
-                                    MaterialTheme.colorScheme.errorContainer
-                                else
-                                    MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Text(
-                                    status,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isWarning)
-                                        MaterialTheme.colorScheme.onErrorContainer
-                                    else
-                                        MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        SUGGESTIONS.forEach { suggestion ->
-                            SuggestionChip(
-                                onClick = { viewModel.useSuggestion(suggestion) },
-                                label = { Text(suggestion, style = MaterialTheme.typography.bodySmall) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
-
-            itemsIndexed(messages) { index, message ->
-                ChatBubble(message = message)
-                // Report button hidden until a hosted backend is available
-                if (false && message.role == "assistant") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        IconButton(
-                            onClick = { reportDialogIndex = index },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Flag,
-                                contentDescription = "Report this response",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                }
-                // Citation cards below each assistant message that has articles
-                if (message.role == "assistant" && !message.articles.isNullOrEmpty()) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
-                    ) {
-                        items(message.articles) { article ->
-                            CitationCard(
-                                article = article,
-                                onClick = { onArticleClick(article.id) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Loading indicator
-            if (isLoading) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    "Searching articles…",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        HorizontalDivider()
-
-        // Input row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { viewModel.updateQuery(it) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Ask about your threat intelligence…") },
-                maxLines = 4,
-                shape = MaterialTheme.shapes.medium,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
-            )
-            FilledIconButton(
-                onClick = { viewModel.sendMessage() },
-                enabled = query.isNotBlank() && !isLoading
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-            }
-        }
-
-        // Disclaimer at the very bottom
-        Text(
-            text = "Responses are generated using LLMs and may contain errors. Always verify against original sources.",
-            style = MaterialTheme.typography.labelSmall,
-            fontStyle = FontStyle.Italic,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 8.dp)
-        )
     }
-    } // end Scaffold
 }

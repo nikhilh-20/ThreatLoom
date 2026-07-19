@@ -1,6 +1,7 @@
 package com.threatloom.app.data.repository
 
 import com.threatloom.app.data.remote.dto.ChatMessageDto
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.LlmService
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,6 +17,7 @@ class IntelligenceRepository @Inject constructor(
     ): String? {
         return try {
             llmService.chatCompletion(
+                feature = LlmFeature.INTELLIGENCE_CHAT,
                 messages = messages,
                 temperature = temperature,
                 maxTokens = maxTokens

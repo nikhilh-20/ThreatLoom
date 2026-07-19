@@ -19,9 +19,10 @@ import com.threatloom.app.data.local.entity.*
         TrendAnalysisEntity::class,
         QuizEntity::class,
         DebateEntity::class,
-        SavedChatEntity::class
+        SavedChatEntity::class,
+        SavedCategoryChatEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -37,4 +38,5 @@ abstract class ThreatLoomDatabase : RoomDatabase() {
     abstract fun quizDao(): QuizDao
     abstract fun debateDao(): DebateDao
     abstract fun savedChatDao(): SavedChatDao
+    abstract fun savedCategoryChatDao(): SavedCategoryChatDao
 }

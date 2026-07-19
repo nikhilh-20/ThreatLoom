@@ -43,6 +43,7 @@ def _run_pipeline(lookback_days=1, since_last_fetch=False):
     try:
         from feed_fetcher import fetch_all_feeds
         from malpedia_fetcher import fetch_malpedia
+        from blog_fetcher import fetch_kaido_blog
         from article_scraper import scrape_unscraped_articles
         from summarizer import summarize_pending
         from database import delete_file_url_articles, get_unsummarized_count
@@ -65,6 +66,10 @@ def _run_pipeline(lookback_days=1, since_last_fetch=False):
         malpedia_new = fetch_malpedia(lookback_days=lookback_days, since_last_fetch=since_last_fetch)
         logger.info(f"Fetched {malpedia_new} new articles from Malpedia")
         new_articles += malpedia_new
+
+        blog_new = fetch_kaido_blog()
+        logger.info(f"Fetched {blog_new} new articles from Kaido's Blog")
+        new_articles += blog_new
 
         # Scrape all pending articles in batches
         _pipeline_stage = "scrape"

@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
@@ -29,6 +30,8 @@ fun InsightPanel(
     onGenerateForecast: () -> Unit,
     onReportTrend: (() -> Unit)? = null,
     onReportForecast: (() -> Unit)? = null,
+    onAbortTrend: (() -> Unit)? = null,
+    onAbortForecast: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -42,6 +45,7 @@ fun InsightPanel(
             // Trend analysis section
             if (isTrendLoading) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -49,8 +53,14 @@ fun InsightPanel(
                     Text(
                         trendProgress,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (onAbortTrend != null) {
+                        IconButton(onClick = onAbortTrend, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Abort trend analysis", modifier = Modifier.size(18.dp))
+                        }
+                    }
                 }
             } else if (quarterlyTrends.isNotEmpty() || yearlyTrends.isNotEmpty()) {
                 Row(
@@ -120,6 +130,7 @@ fun InsightPanel(
             // Forecast section
             if (isForecastLoading) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -127,8 +138,14 @@ fun InsightPanel(
                     Text(
                         "Generating forecast...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (onAbortForecast != null) {
+                        IconButton(onClick = onAbortForecast, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Abort forecast", modifier = Modifier.size(18.dp))
+                        }
+                    }
                 }
             } else if (!forecastText.isNullOrBlank()) {
                 Row(

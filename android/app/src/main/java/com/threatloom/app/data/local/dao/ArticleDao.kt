@@ -76,6 +76,9 @@ interface ArticleDao {
     @Query("SELECT 1 FROM articles WHERE url = :url LIMIT 1")
     suspend fun existsByUrl(url: String): Int?
 
+    @Query("SELECT id, url FROM articles WHERE source_id = :sourceId")
+    suspend fun getIdsAndUrlsBySourceId(sourceId: Long): List<IdUrlTuple>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(article: ArticleEntity): Long
 
@@ -91,8 +94,9 @@ interface ArticleDao {
     suspend fun getUnscraped(limit: Int = 20): List<UnscrapedArticle>
 
     @Query("""
-        SELECT a.id, a.title, a.url, a.content_raw
+        SELECT a.id, a.title, a.url, a.content_raw, s.name as source_name
         FROM articles a
+        JOIN sources s ON a.source_id = s.id
         LEFT JOIN summaries sm ON sm.article_id = a.id
         WHERE sm.id IS NULL AND a.content_raw IS NOT NULL AND a.content_raw != ''
           AND a.duplicate_of_id IS NULL
@@ -182,7 +186,8 @@ interface ArticleDao {
 }
 
 data class UnscrapedArticle(val id: Long, val url: String)
-data class UnsummarizedArticle(val id: Long, val title: String, val url: String, val content_raw: String)
+data class IdUrlTuple(val id: Long, val url: String)
+data class UnsummarizedArticle(val id: Long, val title: String, val url: String, val content_raw: String, val source_name: String?)
 data class UnembeddedArticle(val id: Long, val title: String, val summary_text: String)
 data class DedupCandidate(
     val id: Long,

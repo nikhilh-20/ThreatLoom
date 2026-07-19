@@ -1,5 +1,6 @@
 package com.threatloom.app.ui.dashboard
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -7,13 +8,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.threatloom.app.data.repository.SavedCategoryChatSummary
 import com.threatloom.app.ui.components.*
+import com.threatloom.app.util.DateUtils
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,11 +28,14 @@ fun DrilldownScreen(
     categoryName: String,
     onArticleClick: (Long) -> Unit,
     onSubcategoryClick: (String, String) -> Unit,
+    onChatClick: (String) -> Unit,
+    onOpenChatClick: (categoryName: String, conversationId: Long) -> Unit = { _, _ -> },
     onBack: () -> Unit,
     viewModel: DrilldownViewModel = hiltViewModel()
 ) {
     val articles by viewModel.articles.collectAsState()
     val subcategories by viewModel.subcategories.collectAsState()
+    val savedChats by viewModel.savedChats.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val quarterlyTrends by viewModel.quarterlyTrends.collectAsState()
     val yearlyTrends by viewModel.yearlyTrends.collectAsState()
@@ -43,6 +52,7 @@ fun DrilldownScreen(
     val coroutineScope = rememberCoroutineScope()
     var showReportTrendDialog by remember { mutableStateOf(false) }
     var showReportForecastDialog by remember { mutableStateOf(false) }
+    var deleteChatId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(reportStatus) {
         reportStatus?.let { coroutineScope.launch { snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short) } }
@@ -186,6 +196,21 @@ fun DrilldownScreen(
         )
     }
 
+    deleteChatId?.let { chatId ->
+        AlertDialog(
+            onDismissRequest = { deleteChatId = null },
+            title = { Text("Delete Chat?") },
+            text = { Text("This will permanently delete this saved conversation.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteChat(chatId)
+                    deleteChatId = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteChatId = null }) { Text("Cancel") } }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -194,6 +219,11 @@ fun DrilldownScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { onChatClick(categoryName) }) {
+                        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat about this category")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -243,8 +273,21 @@ fun DrilldownScreen(
                         onGenerateForecast = { viewModel.generateForecast(categoryName) },
                         // Report callbacks hidden until a hosted backend is available
                         onReportTrend = null,
-                        onReportForecast = null
+                        onReportForecast = null,
+                        onAbortTrend = { viewModel.abortTrendGeneration() },
+                        onAbortForecast = { viewModel.abortForecastGeneration() }
                     )
+                }
+
+                if (savedChats.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SavedCategoryChatsSection(
+                            chats = savedChats,
+                            onOpen = { chatId -> onOpenChatClick(categoryName, chatId) },
+                            onDelete = { chatId -> deleteChatId = chatId }
+                        )
+                    }
                 }
 
                 if (subcategories.isNotEmpty()) {
@@ -267,6 +310,73 @@ fun DrilldownScreen(
 
                 items(articles) { article ->
                     ArticleCard(article = article, onClick = { onArticleClick(article.id) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedCategoryChatsSection(
+    chats: List<SavedCategoryChatSummary>,
+    onOpen: (Long) -> Unit,
+    onDelete: (Long) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Chat,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Saved Chats",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            chats.forEach { chat ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(chat.id) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(chat.title ?: "Chat", style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                        val meta = buildString {
+                            append(DateUtils.relativeTime(chat.updatedDate))
+                            if (chat.totalCost > 0.0 || chat.modelUsed != null) {
+                                append(" · $")
+                                append("%.4f".format(chat.totalCost))
+                                chat.modelUsed?.let { append(" · $it") }
+                            }
+                        }
+                        Text(meta, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick = { onDelete(chat.id) }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete chat",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
         }

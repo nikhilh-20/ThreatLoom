@@ -4,6 +4,8 @@ import com.threatloom.app.data.preferences.SettingsDataStore
 import com.threatloom.app.data.remote.api.AnthropicApi
 import com.threatloom.app.data.remote.api.OpenAiApi
 import com.threatloom.app.data.remote.dto.*
+import com.threatloom.app.domain.model.LlmFeature
+import com.threatloom.app.util.AppLogger
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -13,7 +15,8 @@ data class LlmResult(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
     val cacheWriteTokens: Int = 0,
-    val cacheReadTokens: Int = 0
+    val cacheReadTokens: Int = 0,
+    val webSearchCalls: Int = 0
 )
 
 @Singleton
@@ -21,26 +24,36 @@ class LlmService @Inject constructor(
     private val openAiApi: OpenAiApi,
     private val anthropicApi: AnthropicApi,
     private val settingsDataStore: SettingsDataStore,
-    private val costTracker: CostTracker
+    private val costTracker: CostTracker,
+    private val appLogger: AppLogger
 ) {
+    companion object {
+        // Anthropic's web_search tool enforces this as a hard per-request cap (max_uses).
+        private const val WEB_SEARCH_MAX_USES = 5
+    }
+
     suspend fun chatCompletion(
+        feature: LlmFeature,
         systemPrompt: String? = null,
         messages: List<ChatMessageDto>,
         temperature: Float = 0.3f,
         maxTokens: Int = 2000,
         jsonMode: Boolean = false,
-        cacheSystemPrompt: Boolean = false
+        cacheSystemPrompt: Boolean = false,
+        enableWebSearch: Boolean = false
     ): LlmResult {
-        val provider = settingsDataStore.llmProvider.first()
+        val provider = resolveProvider(feature)
         return if (provider == "anthropic") {
-            callAnthropic(systemPrompt, messages, temperature, maxTokens, jsonMode, cacheSystemPrompt)
+            callAnthropic(feature, systemPrompt, messages, temperature, maxTokens, jsonMode, cacheSystemPrompt, enableWebSearch)
+        } else if (enableWebSearch) {
+            callOpenAiResponses(feature, systemPrompt, messages, temperature, maxTokens)
         } else {
-            callOpenAi(systemPrompt, messages, temperature, maxTokens, jsonMode)
+            callOpenAi(feature, systemPrompt, messages, temperature, maxTokens, jsonMode)
         }
     }
 
-    suspend fun hasApiKey(): Boolean {
-        val provider = settingsDataStore.llmProvider.first()
+    suspend fun hasApiKey(feature: LlmFeature): Boolean {
+        val provider = resolveProvider(feature)
         val key = if (provider == "anthropic") {
             settingsDataStore.anthropicApiKey.first()
         } else {
@@ -49,8 +62,17 @@ class LlmService @Inject constructor(
         return key.isNotBlank()
     }
 
-    suspend fun getModelName(): String {
-        val provider = settingsDataStore.llmProvider.first()
+    suspend fun getModelName(feature: LlmFeature): String {
+        val provider = resolveProvider(feature)
+        return resolveModel(feature, provider)
+    }
+
+    private suspend fun resolveProvider(feature: LlmFeature): String =
+        settingsDataStore.featureProvider(feature).first().ifBlank { settingsDataStore.llmProvider.first() }
+
+    private suspend fun resolveModel(feature: LlmFeature, provider: String): String {
+        val override = settingsDataStore.featureModel(feature).first()
+        if (override.isNotBlank()) return override
         return if (provider == "anthropic") {
             settingsDataStore.anthropicModel.first()
         } else {
@@ -59,13 +81,14 @@ class LlmService @Inject constructor(
     }
 
     private suspend fun callOpenAi(
+        feature: LlmFeature,
         systemPrompt: String?,
         messages: List<ChatMessageDto>,
         temperature: Float,
         maxTokens: Int,
         jsonMode: Boolean
     ): LlmResult {
-        val model = settingsDataStore.openaiModel.first()
+        val model = resolveModel(feature, "openai")
         val allMessages = if (systemPrompt != null) {
             listOf(ChatMessageDto("system", systemPrompt)) + messages
         } else {
@@ -104,14 +127,16 @@ class LlmService @Inject constructor(
     }
 
     private suspend fun callAnthropic(
+        feature: LlmFeature,
         systemPrompt: String?,
         messages: List<ChatMessageDto>,
         temperature: Float,
         maxTokens: Int,
         jsonMode: Boolean,
-        cacheSystemPrompt: Boolean
+        cacheSystemPrompt: Boolean,
+        enableWebSearch: Boolean = false
     ): LlmResult {
-        val model = settingsDataStore.anthropicModel.first()
+        val model = resolveModel(feature, "anthropic")
 
         // Collect system parts in order: explicit systemPrompt, then system-role messages
         val systemParts = mutableListOf<String>()
@@ -161,18 +186,55 @@ class LlmService @Inject constructor(
                 maxTokens = maxTokens,
                 system = systemBlocks,
                 messages = mergedMessages,
-                temperature = temperature
+                temperature = temperature,
+                tools = if (enableWebSearch) listOf(AnthropicTool(maxUses = WEB_SEARCH_MAX_USES)) else null
             )
         )
-        var content = response.content.firstOrNull { it.type == "text" }?.text
-            ?: throw IllegalStateException("No response from Anthropic")
+        var content = response.content.filter { it.type == "text" }.mapNotNull { it.text }.joinToString("\n")
+        if (content.isBlank()) throw IllegalStateException("No response from Anthropic")
         if (jsonMode) content = stripCodeFences(content)
         val inputTok = response.usage?.input_tokens ?: 0
         val outputTok = response.usage?.output_tokens ?: 0
         val cacheWriteTok = response.usage?.cache_creation_input_tokens ?: 0
         val cacheReadTok = response.usage?.cache_read_input_tokens ?: 0
         costTracker.addUsage(inputTok, outputTok, cacheWriteTok, cacheReadTok)
-        return LlmResult(content, inputTok, outputTok, cacheWriteTok, cacheReadTok)
+        val searchCalls = response.usage?.serverToolUse?.webSearchRequests ?: 0
+        costTracker.addWebSearchCalls(searchCalls)
+        appLogger.d("LlmService", "Anthropic response: model=$model, webSearchEnabled=$enableWebSearch, searchCalls=$searchCalls")
+        return LlmResult(content, inputTok, outputTok, cacheWriteTok, cacheReadTok, webSearchCalls = searchCalls)
+    }
+
+    private suspend fun callOpenAiResponses(
+        feature: LlmFeature,
+        systemPrompt: String?,
+        messages: List<ChatMessageDto>,
+        temperature: Float,
+        maxTokens: Int
+    ): LlmResult {
+        val model = resolveModel(feature, "openai")
+        val input = messages.map { OpenAiResponsesInputItem(role = it.role, content = it.content) }
+        val response = openAiApi.createResponse(
+            OpenAiResponsesRequest(
+                model = model,
+                input = input,
+                instructions = systemPrompt,
+                tools = listOf(OpenAiResponsesTool()),
+                temperature = temperature,
+                maxOutputTokens = maxTokens
+            )
+        )
+        val message = response.output.firstOrNull { it.type == "message" }
+        val content = message?.content.orEmpty().mapNotNull { it.text }.joinToString("\n")
+        if (content.isBlank()) throw IllegalStateException("No response from OpenAI")
+        val totalInput = response.usage?.inputTokens ?: 0
+        val outputTok = response.usage?.outputTokens ?: 0
+        val cachedTok = response.usage?.inputTokensDetails?.cachedTokens ?: 0
+        val inputTok = totalInput - cachedTok
+        costTracker.addUsage(inputTok, outputTok, cacheWrite = 0, cacheRead = cachedTok)
+        val searchCalls = response.output.count { it.type == "web_search_call" }
+        costTracker.addWebSearchCalls(searchCalls)
+        appLogger.d("LlmService", "OpenAI Responses API result: model=$model, searchCalls=$searchCalls")
+        return LlmResult(content, inputTok, outputTok, cacheWriteTokens = 0, cacheReadTokens = cachedTok, webSearchCalls = searchCalls)
     }
 
     private fun stripCodeFences(text: String): String {

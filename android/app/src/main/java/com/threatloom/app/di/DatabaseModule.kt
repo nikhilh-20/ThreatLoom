@@ -3,6 +3,7 @@ package com.threatloom.app.di
 import android.content.Context
 import androidx.room.Room
 import com.threatloom.app.data.local.MIGRATION_7_8
+import com.threatloom.app.data.local.MIGRATION_8_9
 import com.threatloom.app.data.local.ThreatLoomDatabase
 import com.threatloom.app.data.local.dao.*
 import dagger.Module
@@ -23,7 +24,7 @@ object DatabaseModule {
             context,
             ThreatLoomDatabase::class.java,
             "threatlandscape.db"
-        ).addMigrations(MIGRATION_7_8).build()
+        ).addMigrations(MIGRATION_7_8, MIGRATION_8_9).build()
     }
 
     @Provides fun provideSourceDao(db: ThreatLoomDatabase): SourceDao = db.sourceDao()
@@ -37,4 +38,5 @@ object DatabaseModule {
     @Provides fun provideQuizDao(db: ThreatLoomDatabase): QuizDao = db.quizDao()
     @Provides fun provideDebateDao(db: ThreatLoomDatabase): DebateDao = db.debateDao()
     @Provides fun provideSavedChatDao(db: ThreatLoomDatabase): SavedChatDao = db.savedChatDao()
+    @Provides fun provideSavedCategoryChatDao(db: ThreatLoomDatabase): SavedCategoryChatDao = db.savedCategoryChatDao()
 }

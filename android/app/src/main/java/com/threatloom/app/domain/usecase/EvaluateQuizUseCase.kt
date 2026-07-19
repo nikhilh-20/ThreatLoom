@@ -6,6 +6,7 @@ import com.threatloom.app.data.remote.dto.ChatMessageDto
 import com.threatloom.app.data.remote.dto.QuizEvaluationItem
 import com.threatloom.app.data.remote.dto.QuizEvaluationResult
 import com.threatloom.app.data.remote.dto.QuizQuestionDto
+import com.threatloom.app.domain.model.LlmFeature
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import javax.inject.Inject
@@ -47,10 +48,11 @@ Respond ONLY with valid JSON."""
         }.joinToString("\n\n")
 
         return try {
-            val model = llmService.getModelName()
+            val model = llmService.getModelName(LlmFeature.QUIZ)
             val before = costTracker.getSnapshot()
 
             val resultJson = llmService.chatCompletion(
+                feature = LlmFeature.QUIZ,
                 systemPrompt = EVAL_PROMPT,
                 messages = listOf(ChatMessageDto("user", userMessage)),
                 temperature = 0.1f,

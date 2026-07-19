@@ -1,5 +1,6 @@
 package com.threatloom.app.ui.navigation
 
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Psychology
@@ -31,7 +32,13 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
         fun createRoute(articleId: Long, conversationId: Long? = null) =
             "articlechat/$articleId?conversationId=${conversationId ?: NEW_CONVERSATION_ID}"
     }
+    data object CategoryChat : Screen("categorychat/{category}?conversationId={conversationId}", "Chat") {
+        const val NEW_CONVERSATION_ID = -1L
+        fun createRoute(category: String, conversationId: Long? = null) =
+            "categorychat/${Uri.encode(category)}?conversationId=${conversationId ?: NEW_CONVERSATION_ID}"
+    }
     data object LogViewer : Screen("logs", "Logs")
+    data object ModelSettings : Screen("model_settings", "Model Settings")
 
     companion object {
         val bottomNavItems = listOf(Dashboard, Intelligence, Settings)

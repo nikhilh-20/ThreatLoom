@@ -5,24 +5,34 @@
 {% block content %}
 <div class="intelligence-page">
     <div class="chat-container">
+        {% if category %}
+        <div class="chat-scope-banner" id="chat-scope-banner">
+            <span>Chatting about: <strong>{{ category }}</strong></span>
+            <a href="/intelligence">Clear scope</a>
+        </div>
+        {% endif %}
         <div class="chat-messages" id="chat-messages">
             <div class="welcome-screen" id="welcome-screen">
                 <div class="welcome-icon">&#128270;</div>
                 <h2>Intelligence Search & Analysis</h2>
+                {% if category %}
+                <p>Ask questions about articles in the <strong>{{ category }}</strong> category.</p>
+                {% else %}
                 <p>Ask questions about your threat intelligence database. Search for articles by meaning or get analytical insights synthesized from your collected data.</p>
-                <div class="embedding-status" id="embedding-status"></div>
                 <div class="suggestion-chips">
                     <button class="suggestion-chip" onclick="useSuggestion(this)">Show me recent ransomware articles involving data exfiltration</button>
                     <button class="suggestion-chip" onclick="useSuggestion(this)">What are the most common initial access techniques used by threat actors?</button>
                     <button class="suggestion-chip" onclick="useSuggestion(this)">Find articles about supply chain attacks targeting open source packages</button>
                     <button class="suggestion-chip" onclick="useSuggestion(this)">What malware families have been using living-off-the-land techniques?</button>
                 </div>
+                {% endif %}
+                <div class="embedding-status" id="embedding-status"></div>
             </div>
         </div>
 
         <div class="chat-input-area">
             <div class="chat-input-wrapper">
-                <textarea id="chat-input" class="chat-input" placeholder="Ask about your threat intelligence..." rows="1"></textarea>
+                <textarea id="chat-input" class="chat-input" placeholder="{% if category %}Ask about {{ category }} articles...{% else %}Ask about your threat intelligence...{% endif %}" rows="1"></textarea>
                 <button class="chat-send-btn" id="chat-send-btn" onclick="sendMessage()">
                     <span>&#10148;</span>
                 </button>
@@ -41,6 +51,7 @@ const welcomeScreen = document.getElementById('welcome-screen');
 
 let conversationHistory = [];
 let isProcessing = false;
+const scopedCategory = {{ category|tojson if category else 'null' }};
 
 document.addEventListener('DOMContentLoaded', () => {
     loadStats();
@@ -120,7 +131,7 @@ function sendMessage() {
     fetch('/api/intelligence/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: conversationHistory }),
+        body: JSON.stringify({ messages: conversationHistory, category: scopedCategory }),
     })
     .then(r => r.json())
     .then(data => {

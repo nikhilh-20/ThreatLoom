@@ -8,7 +8,8 @@ data class CostSnapshot(
     val input: Int = 0,
     val output: Int = 0,
     val cacheWrite: Int = 0,
-    val cacheRead: Int = 0
+    val cacheRead: Int = 0,
+    val webSearchCalls: Int = 0
 )
 
 @Singleton
@@ -18,6 +19,7 @@ class CostTracker @Inject constructor() {
     private val outputTokens = AtomicInteger(0)
     private val cacheWriteTokens = AtomicInteger(0)
     private val cacheReadTokens = AtomicInteger(0)
+    private val webSearchCalls = AtomicInteger(0)
 
     fun addTokens(input: Int, output: Int) {
         inputTokens.addAndGet(input)
@@ -31,16 +33,22 @@ class CostTracker @Inject constructor() {
         cacheReadTokens.addAndGet(cacheRead)
     }
 
+    fun addWebSearchCalls(count: Int) {
+        if (count > 0) webSearchCalls.addAndGet(count)
+    }
+
     fun reset() {
         inputTokens.set(0)
         outputTokens.set(0)
         cacheWriteTokens.set(0)
         cacheReadTokens.set(0)
+        webSearchCalls.set(0)
     }
 
     fun getSnapshot(): CostSnapshot = CostSnapshot(
         inputTokens.get(), outputTokens.get(),
-        cacheWriteTokens.get(), cacheReadTokens.get()
+        cacheWriteTokens.get(), cacheReadTokens.get(),
+        webSearchCalls.get()
     )
 
     fun getTokens(): Pair<Int, Int> = inputTokens.get() to outputTokens.get()
@@ -51,7 +59,8 @@ class CostTracker @Inject constructor() {
         return (inputTokens.get() * inputPrice
                 + outputTokens.get() * outputPrice
                 + cacheWriteTokens.get() * cacheWritePrice
-                + cacheReadTokens.get() * cacheReadPrice) / 1_000_000.0
+                + cacheReadTokens.get() * cacheReadPrice) / 1_000_000.0 +
+                webSearchCalls.get() * WEB_SEARCH_COST_PER_CALL
     }
 
     fun estimateSummarizationCost(articleCount: Int, model: String): Double {
@@ -105,8 +114,13 @@ class CostTracker @Inject constructor() {
         return ((after.input - before.input) * inputPrice
                 + (after.output - before.output) * outputPrice
                 + (after.cacheWrite - before.cacheWrite) * cacheWritePrice
-                + (after.cacheRead - before.cacheRead) * cacheReadPrice) / 1_000_000.0
+                + (after.cacheRead - before.cacheRead) * cacheReadPrice) / 1_000_000.0 +
+                webSearchDeltaCost(before, after)
     }
+
+    /** Isolated so callers can show the search-fee portion separately from token cost. */
+    fun webSearchDeltaCost(before: CostSnapshot, after: CostSnapshot): Double =
+        (after.webSearchCalls - before.webSearchCalls) * WEB_SEARCH_COST_PER_CALL
 
     fun deltaCost(before: Pair<Int, Int>, after: Pair<Int, Int>, model: String): Double {
         val (inp, _, out) = pricingPer1M(model)
@@ -124,9 +138,16 @@ class CostTracker @Inject constructor() {
         return when {
             "gpt-5-mini" in m -> Triple(0.25, 0.025, 2.00)
             "gpt-5.4-nano" in m -> Triple(0.20, 0.020, 1.25)
+            "gpt-5.6" in m -> Triple(5.00, 0.50, 30.00)
+            "gpt-5.5" in m -> Triple(5.00, 0.50, 30.00)
             "claude-haiku" in m -> Triple(1.00, 0.10, 5.00)
             "claude-sonnet" in m -> Triple(3.00, 0.30, 15.00)
             else -> Triple(1.00, 0.10, 3.00)
         }
+    }
+
+    companion object {
+        // $10 per 1,000 searches/calls — same verified rate for both Anthropic and OpenAI web search tools.
+        private const val WEB_SEARCH_COST_PER_CALL = 0.01
     }
 }
