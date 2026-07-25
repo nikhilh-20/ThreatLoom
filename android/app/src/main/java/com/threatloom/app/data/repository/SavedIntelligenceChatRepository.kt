@@ -4,8 +4,8 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import com.threatloom.app.data.local.dao.SavedCategoryChatDao
-import com.threatloom.app.data.local.entity.SavedCategoryChatEntity
+import com.threatloom.app.data.local.dao.SavedIntelligenceChatDao
+import com.threatloom.app.data.local.entity.SavedIntelligenceChatEntity
 import com.threatloom.app.domain.model.ChatMessage
 import com.threatloom.app.domain.model.ContextArticle
 import com.threatloom.app.domain.model.SummarySection
@@ -13,8 +13,8 @@ import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Lightweight row for listing saved chats on the category page, without parsing message JSON. */
-data class SavedCategoryChatSummary(
+/** Lightweight row for listing saved Intelligence chats, without parsing message JSON. */
+data class SavedIntelligenceChatSummary(
     val id: Long,
     val title: String?,
     val updatedDate: String?,
@@ -22,17 +22,8 @@ data class SavedCategoryChatSummary(
     val modelUsed: String?
 )
 
-/** Lightweight row for the app-wide "Saved Chats" list; carries categoryName so the chat can be reopened. */
-data class GlobalCategoryChatSummary(
-    val id: Long,
-    val categoryName: String,
-    val title: String?,
-    val updatedDate: String?,
-    val modelUsed: String?
-)
-
-/** Rehydrated chat conversation restored from persistence. */
-data class SavedCategoryChatConversation(
+/** Rehydrated Intelligence chat conversation restored from persistence. */
+data class SavedIntelligenceChatConversation(
     val id: Long,
     val title: String?,
     val messages: List<ChatMessage>,
@@ -42,7 +33,7 @@ data class SavedCategoryChatConversation(
 )
 
 @JsonClass(generateAdapter = true)
-data class SavedCategoryChatMessageDto(
+data class SavedIntelligenceChatMessageDto(
     val role: String,
     val content: String,
     val modelUsed: String? = null,
@@ -52,25 +43,25 @@ data class SavedCategoryChatMessageDto(
 
 /** Persisted form of one rolling-context entry: article id + which summary sections were injected. */
 @JsonClass(generateAdapter = true)
-data class SavedContextArticleDto(
+data class SavedIntelligenceContextArticleDto(
     val articleId: Long,
     val sections: List<String>
 )
 
 @Singleton
-class SavedCategoryChatRepository @Inject constructor(
-    private val savedCategoryChatDao: SavedCategoryChatDao,
+class SavedIntelligenceChatRepository @Inject constructor(
+    private val savedIntelligenceChatDao: SavedIntelligenceChatDao,
     private val articleRepository: ArticleRepository
 ) {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-    private val listType = Types.newParameterizedType(List::class.java, SavedCategoryChatMessageDto::class.java)
-    private val adapter = moshi.adapter<List<SavedCategoryChatMessageDto>>(listType)
-    private val contextListType = Types.newParameterizedType(List::class.java, SavedContextArticleDto::class.java)
-    private val contextAdapter = moshi.adapter<List<SavedContextArticleDto>>(contextListType)
+    private val listType = Types.newParameterizedType(List::class.java, SavedIntelligenceChatMessageDto::class.java)
+    private val adapter = moshi.adapter<List<SavedIntelligenceChatMessageDto>>(listType)
+    private val contextListType = Types.newParameterizedType(List::class.java, SavedIntelligenceContextArticleDto::class.java)
+    private val contextAdapter = moshi.adapter<List<SavedIntelligenceContextArticleDto>>(contextListType)
 
-    suspend fun getAllByCategory(categoryName: String): List<SavedCategoryChatSummary> {
-        return savedCategoryChatDao.getAllByCategory(categoryName).map {
-            SavedCategoryChatSummary(
+    suspend fun getAll(): List<SavedIntelligenceChatSummary> {
+        return savedIntelligenceChatDao.getAll().map {
+            SavedIntelligenceChatSummary(
                 id = it.id,
                 title = it.title,
                 updatedDate = it.updatedDate,
@@ -80,21 +71,8 @@ class SavedCategoryChatRepository @Inject constructor(
         }
     }
 
-    /** Every saved category chat across all categories, newest first, for the app-wide Saved Chats list. */
-    suspend fun getAllGlobal(): List<GlobalCategoryChatSummary> {
-        return savedCategoryChatDao.getAll().map {
-            GlobalCategoryChatSummary(
-                id = it.id,
-                categoryName = it.categoryName,
-                title = it.title,
-                updatedDate = it.updatedDate,
-                modelUsed = it.modelUsed
-            )
-        }
-    }
-
-    suspend fun getById(id: Long): SavedCategoryChatConversation? {
-        val entity = savedCategoryChatDao.getById(id) ?: return null
+    suspend fun getById(id: Long): SavedIntelligenceChatConversation? {
+        val entity = savedIntelligenceChatDao.getById(id) ?: return null
         val dtos = entity.messages?.let { runCatching { adapter.fromJson(it) }.getOrNull() } ?: emptyList()
 
         // Batch-fetch every cited article across all messages in one query, then attach per message.
@@ -113,7 +91,8 @@ class SavedCategoryChatRepository @Inject constructor(
                 modelUsed = dto.modelUsed
             )
         }
-        return SavedCategoryChatConversation(
+
+        return SavedIntelligenceChatConversation(
             id = entity.id,
             title = entity.title,
             messages = messages,
@@ -137,14 +116,13 @@ class SavedCategoryChatRepository @Inject constructor(
 
     suspend fun save(
         id: Long?,
-        categoryName: String,
         messages: List<ChatMessage>,
         context: List<ContextArticle>,
         totalCost: Double,
         modelUsed: String?
     ): Long {
         val dtos = messages.map {
-            SavedCategoryChatMessageDto(
+            SavedIntelligenceChatMessageDto(
                 role = it.role,
                 content = it.content,
                 modelUsed = it.modelUsed,
@@ -153,13 +131,12 @@ class SavedCategoryChatRepository @Inject constructor(
         }
         val messagesJson = adapter.toJson(dtos)
         val contextJson = contextAdapter.toJson(
-            context.map { SavedContextArticleDto(it.article.id, it.sections.map { s -> s.token }) }
+            context.map { SavedIntelligenceContextArticleDto(it.article.id, it.sections.map { s -> s.token }) }
         )
 
         if (id == null) {
-            return savedCategoryChatDao.upsert(
-                SavedCategoryChatEntity(
-                    categoryName = categoryName,
+            return savedIntelligenceChatDao.upsert(
+                SavedIntelligenceChatEntity(
                     title = generateTitle(messages),
                     messages = messagesJson,
                     contextArticles = contextJson,
@@ -171,11 +148,10 @@ class SavedCategoryChatRepository @Inject constructor(
             )
         }
 
-        val existing = savedCategoryChatDao.getById(id)
-        return savedCategoryChatDao.upsert(
-            SavedCategoryChatEntity(
+        val existing = savedIntelligenceChatDao.getById(id)
+        return savedIntelligenceChatDao.upsert(
+            SavedIntelligenceChatEntity(
                 id = id,
-                categoryName = categoryName,
                 title = existing?.title ?: generateTitle(messages),
                 messages = messagesJson,
                 contextArticles = contextJson,
@@ -187,7 +163,7 @@ class SavedCategoryChatRepository @Inject constructor(
         )
     }
 
-    suspend fun delete(id: Long) = savedCategoryChatDao.deleteById(id)
+    suspend fun delete(id: Long) = savedIntelligenceChatDao.deleteById(id)
 
     private fun generateTitle(messages: List<ChatMessage>): String {
         val firstUserMessage = messages.firstOrNull { it.role == "user" }?.content?.trim()

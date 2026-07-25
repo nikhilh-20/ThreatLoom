@@ -11,6 +11,9 @@ interface DebateDao {
     @Query("SELECT * FROM debates WHERE article_id = :articleId")
     suspend fun getByArticleId(articleId: Long): DebateEntity?
 
+    @Query("SELECT * FROM debates ORDER BY created_date DESC")
+    suspend fun getAll(): List<DebateEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(debate: DebateEntity): Long
 

@@ -51,6 +51,8 @@ class SettingsDataStore @Inject constructor(
         val RELEVANCE_CHECK_MODEL = stringPreferencesKey("relevance_check_model")
         val QUIZ_PROVIDER = stringPreferencesKey("quiz_provider")
         val QUIZ_MODEL = stringPreferencesKey("quiz_model")
+        val CHAT_ROUTER_PROVIDER = stringPreferencesKey("chat_router_provider")
+        val CHAT_ROUTER_MODEL = stringPreferencesKey("chat_router_model")
 
         private fun overrideKeysFor(feature: LlmFeature): Pair<Preferences.Key<String>, Preferences.Key<String>> =
             when (feature) {
@@ -63,6 +65,7 @@ class SettingsDataStore @Inject constructor(
                 LlmFeature.SUMMARIZATION -> SUMMARIZATION_PROVIDER to SUMMARIZATION_MODEL
                 LlmFeature.RELEVANCE_CHECK -> RELEVANCE_CHECK_PROVIDER to RELEVANCE_CHECK_MODEL
                 LlmFeature.QUIZ -> QUIZ_PROVIDER to QUIZ_MODEL
+                LlmFeature.CHAT_ROUTER -> CHAT_ROUTER_PROVIDER to CHAT_ROUTER_MODEL
             }
     }
 

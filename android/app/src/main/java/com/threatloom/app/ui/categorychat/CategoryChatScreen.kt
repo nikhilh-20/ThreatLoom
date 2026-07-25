@@ -6,6 +6,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.threatloom.app.ui.components.ChatBubble
+import com.threatloom.app.ui.components.CitationCard
 import com.threatloom.app.ui.components.WebSearchToggleButton
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +35,7 @@ fun CategoryChatScreen(
     categoryName: String,
     conversationId: Long? = null,
     onBack: () -> Unit,
+    onArticleClick: (Long) -> Unit,
     viewModel: CategoryChatViewModel = hiltViewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -169,6 +173,20 @@ fun CategoryChatScreen(
                 ) {
                     itemsIndexed(messages) { _, message ->
                         ChatBubble(message = message)
+                        // Citation cards below each assistant message that cites articles
+                        if (message.role == "assistant" && !message.articles.isNullOrEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(message.articles) { article ->
+                                    CitationCard(
+                                        article = article,
+                                        onClick = { onArticleClick(article.id) }
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     if (isLoading) {

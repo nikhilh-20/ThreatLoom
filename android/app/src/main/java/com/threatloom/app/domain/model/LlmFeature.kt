@@ -14,5 +14,9 @@ enum class LlmFeature(val displayName: String) {
     // but still need their own resolution key so they aren't silently pulled into
     // whatever override SUMMARIZATION/INTELLIGENCE_CHAT ends up with.
     RELEVANCE_CHECK("Relevance Check"),
-    QUIZ("Quiz")
+    QUIZ("Quiz"),
+
+    // Cheap pre-RAG routing call: decides whether a chat turn needs fresh retrieval and
+    // which summary sections to inject. Internal; can be model-overridden like the above.
+    CHAT_ROUTER("Chat Router")
 }

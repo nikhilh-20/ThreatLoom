@@ -20,6 +20,15 @@ data class SavedChatSummary(
     val modelUsed: String?
 )
 
+/** Lightweight row for the app-wide "Saved Chats" list; carries articleId so the chat can be reopened. */
+data class GlobalArticleChatSummary(
+    val id: Long,
+    val articleId: Long,
+    val title: String?,
+    val updatedDate: String?,
+    val modelUsed: String?
+)
+
 /** Rehydrated chat conversation restored from persistence. */
 data class SavedChatConversation(
     val id: Long,
@@ -51,6 +60,19 @@ class SavedChatRepository @Inject constructor(
                 title = it.title,
                 updatedDate = it.updatedDate,
                 totalCost = it.totalCost,
+                modelUsed = it.modelUsed
+            )
+        }
+    }
+
+    /** Every saved article chat across all articles, newest first, for the app-wide Saved Chats list. */
+    suspend fun getAllGlobal(): List<GlobalArticleChatSummary> {
+        return savedChatDao.getAll().map {
+            GlobalArticleChatSummary(
+                id = it.id,
+                articleId = it.articleId,
+                title = it.title,
+                updatedDate = it.updatedDate,
                 modelUsed = it.modelUsed
             )
         }

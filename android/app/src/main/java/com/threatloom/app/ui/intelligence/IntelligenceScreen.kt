@@ -3,6 +3,7 @@ package com.threatloom.app.ui.intelligence
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,11 +13,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.threatloom.app.ui.components.ChatBubble
 import com.threatloom.app.ui.components.CitationCard
 import com.threatloom.app.ui.components.WebSearchToggleButton
+import com.threatloom.app.util.DateUtils
 import kotlinx.coroutines.launch
 
 private val SUGGESTIONS = listOf(
@@ -38,6 +45,7 @@ private val SUGGESTIONS = listOf(
     "What malware families have been using living-off-the-land techniques?"
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IntelligenceScreen(
     onArticleClick: (Long) -> Unit,
@@ -50,12 +58,23 @@ fun IntelligenceScreen(
     val reportStatus by viewModel.reportStatus.collectAsState()
     val webSearchEnabled by viewModel.webSearchEnabled.collectAsState()
     val loadingStage by viewModel.loadingStage.collectAsState()
+    val isSaved by viewModel.isSaved.collectAsState()
+    val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
+    val savedChats by viewModel.savedChats.collectAsState()
 
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     var reportDialogIndex by remember { mutableIntStateOf(-1) }
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
+    var showSavedSheet by remember { mutableStateOf(false) }
+    var deleteChatId by remember { mutableStateOf<Long?>(null) }
+
+    val hasUserMessage = messages.any { it.role == "user" }
+
+    LaunchedEffect(showSavedSheet) {
+        if (showSavedSheet) viewModel.refreshSavedChats()
+    }
 
     // Refresh embedding count each time this screen enters the composition
     LaunchedEffect(Unit) {
@@ -117,6 +136,85 @@ fun IntelligenceScreen(
         )
     }
 
+    if (showSavedSheet) {
+        ModalBottomSheet(onDismissRequest = { showSavedSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp)
+            ) {
+                Text(
+                    "Saved Chats",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                if (savedChats.isEmpty()) {
+                    Text(
+                        "No saved chats yet. Use the save icon to keep a conversation.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                } else {
+                    savedChats.forEach { chat ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.resume(chat.id)
+                                    showSavedSheet = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Chat,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(chat.title ?: "Chat", style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                                Text(
+                                    DateUtils.relativeTime(chat.updatedDate) +
+                                        (chat.modelUsed?.let { " · $it" } ?: ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = { deleteChatId = chat.id }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete chat",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deleteChatId?.let { id ->
+        AlertDialog(
+            onDismissRequest = { deleteChatId = null },
+            title = { Text("Delete saved chat?") },
+            text = { Text("This saved conversation will be permanently removed.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.deleteSavedChat(id); deleteChatId = null }) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteChatId = null }) { Text("Cancel") }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
@@ -138,6 +236,23 @@ fun IntelligenceScreen(
                             modifier = Modifier.weight(1f)
                         )
                         WebSearchToggleButton(webSearchEnabled, viewModel::setWebSearchEnabled)
+                        IconButton(
+                            onClick = { viewModel.save() },
+                            enabled = hasUserMessage && hasUnsavedChanges
+                        ) {
+                            Icon(
+                                if (isSaved && !hasUnsavedChanges) Icons.Default.Bookmark else Icons.Default.Save,
+                                contentDescription = "Save chat",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { showSavedSheet = true }) {
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = "Saved chats",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         if (messages.isNotEmpty()) {
                             IconButton(onClick = { viewModel.clearConversation() }) {
                                 Icon(

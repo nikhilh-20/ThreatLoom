@@ -109,4 +109,9 @@ dependencies {
 
     // Coroutines
     implementation(libs.coroutines.android)
+
+    // WorkManager + Hilt-Work
+    implementation(libs.work.runtime)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 }

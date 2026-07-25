@@ -11,6 +11,9 @@ interface SavedCategoryChatDao {
     @Query("SELECT * FROM saved_category_chats WHERE category_name = :categoryName ORDER BY updated_date DESC")
     suspend fun getAllByCategory(categoryName: String): List<SavedCategoryChatEntity>
 
+    @Query("SELECT * FROM saved_category_chats ORDER BY updated_date DESC")
+    suspend fun getAll(): List<SavedCategoryChatEntity>
+
     @Query("SELECT * FROM saved_category_chats WHERE id = :id")
     suspend fun getById(id: Long): SavedCategoryChatEntity?
 

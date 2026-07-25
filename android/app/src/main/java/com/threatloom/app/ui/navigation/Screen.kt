@@ -2,6 +2,7 @@ package com.threatloom.app.ui.navigation
 
 import android.net.Uri
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
@@ -10,6 +11,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 sealed class Screen(val route: String, val title: String, val icon: ImageVector? = null) {
     data object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Dashboard)
     data object Intelligence : Screen("intelligence", "Intelligence", Icons.Default.Psychology)
+    data object SavedChats : Screen("saved_chats", "Saved Chats", Icons.Default.Bookmarks)
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     data object Drilldown : Screen("drilldown/{category}", "Category") {
         fun createRoute(category: String) = "drilldown/$category"
@@ -41,6 +43,6 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object ModelSettings : Screen("model_settings", "Model Settings")
 
     companion object {
-        val bottomNavItems = listOf(Dashboard, Intelligence, Settings)
+        val bottomNavItems = listOf(Dashboard, Intelligence, SavedChats, Settings)
     }
 }

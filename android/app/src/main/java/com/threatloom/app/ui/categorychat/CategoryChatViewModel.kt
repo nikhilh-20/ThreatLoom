@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.threatloom.app.data.repository.SavedCategoryChatRepository
 import com.threatloom.app.domain.model.ChatMessage
+import com.threatloom.app.domain.model.ContextArticle
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.usecase.CategoryChatUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +24,7 @@ class CategoryChatViewModel @Inject constructor(
     private var categoryName: String = ""
     private var initialized = false
     private var conversationId: Long? = null
+    private var contextArticles: List<ContextArticle> = emptyList()
     private var totalCost = 0.0
     private var totalWebSearchCost = 0.0
     private var latestModel: String? = null
@@ -71,6 +73,7 @@ class CategoryChatViewModel @Inject constructor(
                 if (saved != null) {
                     conversationId = saved.id
                     _messages.value = saved.messages
+                    contextArticles = saved.context
                     totalCost = saved.totalCost
                     latestModel = saved.modelUsed
                     _sessionCost.value = saved.totalCost
@@ -107,12 +110,15 @@ class CategoryChatViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             val before = costTracker.getSnapshot()
-            val response = categoryChatUseCase(
-                history,
-                categoryName,
-                _webSearchEnabled.value,
+            val result = categoryChatUseCase(
+                messages = history,
+                categoryName = categoryName,
+                priorContext = contextArticles,
+                webSearchEnabled = _webSearchEnabled.value,
                 onProgress = { stage -> _loadingStage.value = stage }
             )
+            val response = result.message
+            contextArticles = result.context
             val after = costTracker.getSnapshot()
             val model = response.modelUsed ?: latestModel ?: ""
             totalCost += costTracker.deltaCost(before, after, model)
@@ -134,6 +140,7 @@ class CategoryChatViewModel @Inject constructor(
                 id = conversationId,
                 categoryName = categoryName,
                 messages = _messages.value,
+                context = contextArticles,
                 totalCost = totalCost,
                 modelUsed = latestModel
             )

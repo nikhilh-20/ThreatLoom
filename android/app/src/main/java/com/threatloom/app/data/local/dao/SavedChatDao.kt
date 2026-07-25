@@ -11,6 +11,9 @@ interface SavedChatDao {
     @Query("SELECT * FROM saved_chats WHERE article_id = :articleId ORDER BY updated_date DESC")
     suspend fun getAllByArticleId(articleId: Long): List<SavedChatEntity>
 
+    @Query("SELECT * FROM saved_chats ORDER BY updated_date DESC")
+    suspend fun getAll(): List<SavedChatEntity>
+
     @Query("SELECT * FROM saved_chats WHERE id = :id")
     suspend fun getById(id: Long): SavedChatEntity?
 

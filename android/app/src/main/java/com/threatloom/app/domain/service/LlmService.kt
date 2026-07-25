@@ -161,12 +161,16 @@ class LlmService @Inject constructor(
             }
         }
 
-        // Build system block list; first block gets cache_control when caching is requested
+        // Build system block list. Place a cache breakpoint on both the FIRST block (the static
+        // system prompt) and the LAST block (the retrieved-article context). Anthropic caching is
+        // prefix-based, so breakpointing the last block caches the whole [prompt + context] prefix —
+        // which pays off only because callers keep that context stable/append-only across turns.
+        val lastIdx = systemParts.size - 1
         val systemBlocks = if (systemParts.isNotEmpty()) {
             systemParts.mapIndexed { i, text ->
                 AnthropicSystemBlock(
                     text = text,
-                    cacheControl = if (cacheSystemPrompt && i == 0) CacheControl() else null
+                    cacheControl = if (cacheSystemPrompt && (i == 0 || i == lastIdx)) CacheControl() else null
                 )
             }
         } else {

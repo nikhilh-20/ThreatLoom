@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.threatloom.app.data.repository.DebateRepository
 import com.threatloom.app.data.repository.QuizRepository
 import com.threatloom.app.domain.model.ChatMessage
+import com.threatloom.app.domain.model.ContextArticle
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.usecase.DiscussUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,7 @@ class DiscussViewModel @Inject constructor(
     private var initialized = false
     private var totalCost = 0.0
     private var latestModel: String? = null
+    private var contextArticles: List<ContextArticle> = emptyList()
 
     private val _debateTopic = MutableStateFlow<String?>(null)
     val debateTopic: StateFlow<String?> = _debateTopic.asStateFlow()
@@ -71,6 +73,7 @@ class DiscussViewModel @Inject constructor(
                 // Resume a previously saved debate.
                 _debateTopic.value = saved.debateTopic
                 _messages.value = saved.messages
+                contextArticles = saved.context
                 totalCost = saved.totalCost
                 latestModel = saved.modelUsed
                 _sessionCost.value = saved.totalCost
@@ -92,13 +95,16 @@ class DiscussViewModel @Inject constructor(
         // Seed message is not shown in the UI — the LLM's opening reply is the first visible message
         val seedMessages = listOf(ChatMessage("user", "Let's discuss this topic: $topic\n\nPlease open the debate with your initial perspective in 2-3 sentences, then ask me what I think."))
         val before = costTracker.getSnapshot()
-        val opening = discussUseCase(
-            seedMessages,
-            articleId,
-            topic,
-            _webSearchEnabled.value,
+        val result = discussUseCase(
+            messages = seedMessages,
+            originatingArticleId = articleId,
+            debateTopic = topic,
+            priorContext = contextArticles,
+            webSearchEnabled = _webSearchEnabled.value,
             onProgress = { stage -> _loadingStage.value = stage }
         )
+        contextArticles = result.context
+        val opening = result.message
         accrueCost(before, opening.modelUsed)
         _messages.value = listOf(opening)
         if (opening.concluded) _concluded.value = true
@@ -121,13 +127,16 @@ class DiscussViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             val before = costTracker.getSnapshot()
-            val response = discussUseCase(
-                history,
-                articleId,
-                topic,
-                _webSearchEnabled.value,
+            val result = discussUseCase(
+                messages = history,
+                originatingArticleId = articleId,
+                debateTopic = topic,
+                priorContext = contextArticles,
+                webSearchEnabled = _webSearchEnabled.value,
                 onProgress = { stage -> _loadingStage.value = stage }
             )
+            contextArticles = result.context
+            val response = result.message
             accrueCost(before, response.modelUsed)
             _messages.value = _messages.value + response
             if (response.concluded) _concluded.value = true
@@ -166,6 +175,7 @@ class DiscussViewModel @Inject constructor(
             articleId = articleId,
             debateTopic = _debateTopic.value,
             messages = _messages.value,
+            context = contextArticles,
             totalCost = totalCost,
             modelUsed = latestModel,
             concluded = _concluded.value

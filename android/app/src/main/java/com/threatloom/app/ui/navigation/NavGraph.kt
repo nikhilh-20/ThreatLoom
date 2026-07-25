@@ -1,6 +1,7 @@
 package com.threatloom.app.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -15,6 +16,7 @@ import com.threatloom.app.ui.dashboard.SubcategoryDrilldownScreen
 import com.threatloom.app.ui.discuss.DiscussScreen
 import com.threatloom.app.ui.intelligence.IntelligenceScreen
 import com.threatloom.app.ui.quiz.QuizScreen
+import com.threatloom.app.ui.savedchats.SavedChatsScreen
 import com.threatloom.app.ui.logs.LogViewerScreen
 import com.threatloom.app.ui.settings.ModelSettingsScreen
 import com.threatloom.app.ui.settings.SettingsScreen
@@ -145,7 +147,10 @@ fun NavGraph(navController: NavHostController) {
             CategoryChatScreen(
                 categoryName = category,
                 conversationId = conversationId,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onArticleClick = { articleId ->
+                    navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                }
             )
         }
 
@@ -153,6 +158,28 @@ fun NavGraph(navController: NavHostController) {
             IntelligenceScreen(
                 onArticleClick = { articleId ->
                     navController.navigate(Screen.ArticleDetail.createRoute(articleId))
+                }
+            )
+        }
+
+        composable(Screen.SavedChats.route) {
+            SavedChatsScreen(
+                onArticleChatClick = { articleId, convId ->
+                    navController.navigate(Screen.ArticleChat.createRoute(articleId, convId))
+                },
+                onCategoryChatClick = { category, convId ->
+                    navController.navigate(Screen.CategoryChat.createRoute(category, convId))
+                },
+                onDebateClick = { articleId ->
+                    navController.navigate(Screen.Discuss.createRoute(articleId))
+                },
+                onIntelligenceChatClick = {
+                    // The chat id was already queued via AppEvent; switch to the Intelligence tab.
+                    navController.navigate(Screen.Intelligence.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             )
         }

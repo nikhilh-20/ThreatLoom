@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.threatloom.app.data.preferences.SettingsDataStore
 import com.threatloom.app.data.repository.EmbeddingRepository
+import com.threatloom.app.data.repository.SavedIntelligenceChatRepository
+import com.threatloom.app.data.repository.SavedIntelligenceChatSummary
 import com.threatloom.app.data.repository.SummaryRepository
 import com.threatloom.app.domain.model.ChatMessage
+import com.threatloom.app.domain.model.ContextArticle
 import com.threatloom.app.domain.service.ReportService
 import com.threatloom.app.domain.usecase.IntelligenceChatUseCase
+import com.threatloom.app.util.AppEvent
 import com.threatloom.app.util.DateUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -24,11 +28,29 @@ class IntelligenceViewModel @Inject constructor(
     private val embeddingRepository: EmbeddingRepository,
     private val summaryRepository: SummaryRepository,
     private val reportService: ReportService,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val savedIntelligenceChatRepository: SavedIntelligenceChatRepository,
+    private val appEvent: AppEvent
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
+
+    // Rolling retrieval context for the current conversation.
+    private var contextArticles: List<ContextArticle> = emptyList()
+
+    // Persistence state for the current conversation.
+    private var conversationId: Long? = null
+    private var latestModel: String? = null
+
+    private val _isSaved = MutableStateFlow(false)
+    val isSaved: StateFlow<Boolean> = _isSaved.asStateFlow()
+
+    private val _hasUnsavedChanges = MutableStateFlow(false)
+    val hasUnsavedChanges: StateFlow<Boolean> = _hasUnsavedChanges.asStateFlow()
+
+    private val _savedChats = MutableStateFlow<List<SavedIntelligenceChatSummary>>(emptyList())
+    val savedChats: StateFlow<List<SavedIntelligenceChatSummary>> = _savedChats.asStateFlow()
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
@@ -54,6 +76,15 @@ class IntelligenceViewModel @Inject constructor(
 
     init {
         viewModelScope.launch { loadEmbeddingStatus() }
+        // Honor requests from the app-wide Saved Chats tab to open a specific Intelligence chat.
+        viewModelScope.launch {
+            appEvent.resumeIntelligenceChatId.collect { id ->
+                if (id != null) {
+                    resume(id)
+                    appEvent.consumeResumeIntelligenceChat()
+                }
+            }
+        }
     }
 
     fun refreshEmbeddingStatus() {
@@ -83,13 +114,65 @@ class IntelligenceViewModel @Inject constructor(
         _messages.value = history
         viewModelScope.launch {
             _isLoading.value = true
-            val response = intelligenceChatUseCase(
-                history,
-                _webSearchEnabled.value,
+            val result = intelligenceChatUseCase(
+                messages = history,
+                priorContext = contextArticles,
+                webSearchEnabled = _webSearchEnabled.value,
                 onProgress = { stage -> _loadingStage.value = stage }
             )
-            _messages.value = _messages.value + response
+            contextArticles = result.context
+            _messages.value = _messages.value + result.message
+            result.message.modelUsed?.let { latestModel = it }
+            _hasUnsavedChanges.value = true
             _isLoading.value = false
+        }
+    }
+
+    /** Persist the current conversation, updating the existing saved row in place after the first save. */
+    fun save() {
+        if (_messages.value.none { it.role == "user" }) return
+        viewModelScope.launch {
+            conversationId = savedIntelligenceChatRepository.save(
+                id = conversationId,
+                messages = _messages.value,
+                context = contextArticles,
+                totalCost = 0.0,
+                modelUsed = latestModel
+            )
+            _isSaved.value = true
+            _hasUnsavedChanges.value = false
+        }
+    }
+
+    /** Refresh the saved-chats list; called when the saved-chats sheet opens. */
+    fun refreshSavedChats() {
+        viewModelScope.launch { _savedChats.value = savedIntelligenceChatRepository.getAll() }
+    }
+
+    /** Restore a saved conversation into the active view. */
+    fun resume(id: Long) {
+        viewModelScope.launch {
+            val conversation = savedIntelligenceChatRepository.getById(id) ?: return@launch
+            _messages.value = conversation.messages
+            contextArticles = conversation.context
+            latestModel = conversation.modelUsed
+            conversationId = conversation.id
+            _isSaved.value = true
+            _hasUnsavedChanges.value = false
+            _query.value = ""
+        }
+    }
+
+    fun deleteSavedChat(id: Long) {
+        viewModelScope.launch {
+            savedIntelligenceChatRepository.delete(id)
+            _savedChats.value = savedIntelligenceChatRepository.getAll()
+            // If the open conversation was the one deleted, it is no longer persisted.
+            if (conversationId == id) {
+                conversationId = null
+                _isSaved.value = false
+                _hasUnsavedChanges.value = _messages.value.any { it.role == "user" }
+            }
         }
     }
 
@@ -100,7 +183,12 @@ class IntelligenceViewModel @Inject constructor(
 
     fun clearConversation() {
         _messages.value = emptyList()
+        contextArticles = emptyList()
         _query.value = ""
+        conversationId = null
+        latestModel = null
+        _isSaved.value = false
+        _hasUnsavedChanges.value = false
     }
 
     fun sendMessageReport(messageIndex: Int, userNote: String) {

@@ -1,11 +1,16 @@
 package com.threatloom.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -25,10 +30,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.threatloom.app.notification.NotificationHelper
 import com.threatloom.app.ui.navigation.NavGraph
 import com.threatloom.app.ui.navigation.Screen
 import com.threatloom.app.ui.theme.ThreatLoomTheme
@@ -46,8 +53,15 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var appEvent: AppEvent
 
+    private val pendingArticleId = mutableStateOf<Long?>(null)
+
+    private fun Intent.articleId(): Long? =
+        getLongExtra(NotificationHelper.EXTRA_ARTICLE_ID, -1L).takeIf { it > 0 }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Article requested by a notification tap that cold-started this Activity
+        pendingArticleId.value = intent.articleId()
         enableEdgeToEdge()
         setContent {
             ThreatLoomTheme {
@@ -62,10 +76,37 @@ class MainActivity : ComponentActivity() {
                         DisclaimerDialog(onAccept = { phase = AppLaunchPhase.App.ordinal })
                     }
                     AppLaunchPhase.App -> {
-                        MainScreen(appEvent = appEvent)
+                        RequestNotificationPermission()
+                        MainScreen(
+                            appEvent = appEvent,
+                            pendingArticleId = pendingArticleId.value,
+                            onArticleConsumed = { pendingArticleId.value = null }
+                        )
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingArticleId.value = intent.articleId()
+    }
+}
+
+@Composable
+private fun RequestNotificationPermission() {
+    if (Build.VERSION.SDK_INT < 33) return
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* granted or denied — scheduling continues either way */ }
+    LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }
@@ -200,8 +241,19 @@ private fun DisclaimerDialog(onAccept: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(appEvent: AppEvent) {
+fun MainScreen(
+    appEvent: AppEvent,
+    pendingArticleId: Long? = null,
+    onArticleConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
+
+    LaunchedEffect(pendingArticleId) {
+        pendingArticleId?.let {
+            navController.navigate(Screen.ArticleDetail.createRoute(it))
+            onArticleConsumed()
+        }
+    }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val isPipelineRunning by appEvent.pipelineRunning.collectAsState()
@@ -224,9 +276,9 @@ fun MainScreen(appEvent: AppEvent) {
                         NavigationBarItem(
                             modifier = if (dimmed) Modifier.alpha(0.4f) else Modifier,
                             icon = { screen.icon?.let { Icon(it, contentDescription = screen.title) } },
-                            label = {
-                                Text(if (dimmed) "Refreshing…" else screen.title)
-                            },
+                            // Icon-only bar — no labels. Selection is shown by the highlight pill + tint;
+                            // a running refresh is still signaled by the dimmed Intelligence icon above.
+                            label = null,
                             selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
                                 navController.navigate(screen.route) {
@@ -247,12 +299,13 @@ fun MainScreen(appEvent: AppEvent) {
                     NavigationBarItem(
                         modifier = Modifier,
                         icon = { Icon(Icons.Default.LocalCafe, contentDescription = "Support on Ko-fi") },
-                        label = { Text("Coffee") },
+                        // Icon-only like the other tabs; accent tint keeps the donate icon noticeable.
+                        label = null,
                         selected = false,
                         onClick = { showSupportDialog = true },
                         colors = NavigationBarItemDefaults.colors(
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedIconColor = MaterialTheme.colorScheme.primary,
+                            unselectedTextColor = MaterialTheme.colorScheme.primary,
                             indicatorColor = MaterialTheme.colorScheme.surfaceVariant
                         )
                     )

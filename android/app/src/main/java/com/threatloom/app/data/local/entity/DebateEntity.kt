@@ -21,6 +21,7 @@ data class DebateEntity(
     @ColumnInfo(name = "article_id") val articleId: Long,
     @ColumnInfo(name = "debate_topic") val debateTopic: String? = null,
     val messages: String? = null,
+    @ColumnInfo(name = "context_articles") val contextArticles: String? = null,
     @ColumnInfo(name = "total_cost") val totalCost: Double = 0.0,
     @ColumnInfo(name = "model_used") val modelUsed: String? = null,
     val concluded: Boolean = false,
