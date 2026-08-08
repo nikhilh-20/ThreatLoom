@@ -1124,6 +1124,14 @@ def _tag_to_category(tag):
     parts = tag_lower.split("-")
     for category_name, keywords in _CATEGORY_RULES:
         for kw in keywords:
+            # "kaidos-blog" is a synthetic, force-assigned tag, not a natural-language
+            # keyword — it must match exactly, since substring matching would
+            # false-positive on any tag containing "ai" or "dos" (both are substrings
+            # of "kaidos-blog").
+            if category_name == "Kaido's Blog":
+                if tag_lower == kw:
+                    return category_name
+                continue
             if len(kw) <= 3:
                 # Short keywords: exact, component, or prefix+digit
                 if tag_lower == kw or kw in parts:
@@ -1342,7 +1350,6 @@ def get_categorized_articles(limit_per_category=10, since_days=None):
         LEFT JOIN summaries sm ON sm.article_id = a.id
         WHERE sm.tags IS NOT NULL AND sm.tags != '[]'{date_filter}
         ORDER BY a.published_date DESC NULLS LAST, a.fetched_date DESC
-        LIMIT 500
         """,
         params,
     ).fetchall()
@@ -1433,7 +1440,6 @@ def get_articles_for_category(category_name, subcategory_tag=None, since_days=No
         JOIN summaries sm ON sm.article_id = a.id
         WHERE sm.tags IS NOT NULL AND sm.tags != '[]'{date_filter}
         ORDER BY a.published_date DESC NULLS LAST, a.fetched_date DESC
-        LIMIT 500
         """,
         params,
     ).fetchall()

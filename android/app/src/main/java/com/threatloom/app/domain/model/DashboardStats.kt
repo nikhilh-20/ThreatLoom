@@ -8,5 +8,7 @@ data class DashboardStats(
     val totalEmbedded: Int = 0,
     val scrapeFailed: Int = 0,
     val unsummarized: Int = 0,
-    val summaryFailed: Int = 0
+    val summaryFailed: Int = 0,
+    val pendingScrape: Int = 0,
+    val duplicates: Int = 0
 )

@@ -75,6 +75,7 @@ class ArticleRepository @Inject constructor(
     suspend fun countUnscraped() = articleDao.countUnscraped()
     suspend fun countUnsummarized() = articleDao.countUnsummarized()
     suspend fun countScrapeFailed() = articleDao.countScrapeFailed()
+    suspend fun countDuplicates() = articleDao.countDuplicates()
     suspend fun countLast24h() = articleDao.countLast24h()
     suspend fun resetScrapeFailed() = articleDao.resetScrapeFailed()
 

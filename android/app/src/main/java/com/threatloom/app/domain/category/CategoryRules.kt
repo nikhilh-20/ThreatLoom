@@ -92,6 +92,14 @@ object CategoryRules {
         val parts = tagLower.split("-")
         for ((categoryName, keywords) in CATEGORY_RULES) {
             for (kw in keywords) {
+                // "kaidos-blog" is a synthetic, force-assigned tag (see
+                // SummarizeArticlesUseCase), not a natural-language keyword — it must match
+                // exactly, since substring matching would false-positive on any tag that
+                // happens to contain "ai" or "dos" (both are substrings of "kaidos-blog").
+                if (categoryName == "Kaido's Blog") {
+                    if (tagLower == kw) return categoryName
+                    continue
+                }
                 if (kw.length <= 3) {
                     if (tagLower == kw || kw in parts) return categoryName
                     if (tagLower.startsWith(kw) && tagLower.substring(kw.length).all { it.isDigit() } && tagLower.length > kw.length) {

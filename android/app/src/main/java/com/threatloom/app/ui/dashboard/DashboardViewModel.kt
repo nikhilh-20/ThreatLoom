@@ -149,7 +149,9 @@ class DashboardViewModel @Inject constructor(
                     totalEmbedded = embeddingRepository.countAll(),
                     scrapeFailed = articleRepository.countScrapeFailed(),
                     unsummarized = articleRepository.countUnsummarized(),
-                    summaryFailed = summaryRepository.countFailed()
+                    summaryFailed = summaryRepository.countFailed(),
+                    pendingScrape = articleRepository.countUnscraped(),
+                    duplicates = articleRepository.countDuplicates()
                 )
             } catch (_: Exception) {}
 

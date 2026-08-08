@@ -58,6 +58,12 @@ fun StatsSidebar(
                     isRunning = isReSummarizing
                 )
             }
+            if (stats.pendingScrape > 0) {
+                StatRow("Pending scrape", stats.pendingScrape.toString())
+            }
+            if (stats.duplicates > 0) {
+                StatRow("Duplicates", stats.duplicates.toString())
+            }
         }
     }
 }

@@ -69,7 +69,6 @@ interface ArticleDao {
         WHERE sm.tags IS NOT NULL AND sm.tags != '[]'
         AND (:cutoffDate IS NULL OR a.published_date >= :cutoffDate)
         ORDER BY a.published_date DESC, a.fetched_date DESC
-        LIMIT 500
     """)
     suspend fun getTaggedArticles(cutoffDate: String? = null): List<ArticleWithSummaryTuple>
 
@@ -149,6 +148,9 @@ interface ArticleDao {
 
     @Query("SELECT COUNT(*) FROM articles WHERE content_raw IS NOT NULL AND content_raw = ''")
     suspend fun countScrapeFailed(): Int
+
+    @Query("SELECT COUNT(*) FROM articles WHERE duplicate_of_id IS NOT NULL")
+    suspend fun countDuplicates(): Int
 
     @Query("UPDATE articles SET content_raw = NULL WHERE content_raw = ''")
     suspend fun resetScrapeFailed()
