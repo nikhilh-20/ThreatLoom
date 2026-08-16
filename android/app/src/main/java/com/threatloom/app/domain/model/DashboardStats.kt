@@ -10,5 +10,6 @@ data class DashboardStats(
     val unsummarized: Int = 0,
     val summaryFailed: Int = 0,
     val pendingScrape: Int = 0,
-    val duplicates: Int = 0
+    val duplicates: Int = 0,
+    val missingTlcTags: Int = 0
 )

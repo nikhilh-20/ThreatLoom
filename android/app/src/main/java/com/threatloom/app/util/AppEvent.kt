@@ -17,6 +17,9 @@ class AppEvent @Inject constructor() {
     private val _databaseCleared = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val databaseCleared = _databaseCleared.asSharedFlow()
 
+    private val _rateLimited = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val rateLimited = _rateLimited.asSharedFlow()
+
     private val _pipelineRunning = MutableStateFlow(false)
     val pipelineRunning: StateFlow<Boolean> = _pipelineRunning.asStateFlow()
 
@@ -27,6 +30,10 @@ class AppEvent @Inject constructor() {
 
     fun notifyDatabaseCleared() {
         _databaseCleared.tryEmit(Unit)
+    }
+
+    fun notifyRateLimited() {
+        _rateLimited.tryEmit(Unit)
     }
 
     fun setPipelineRunning(running: Boolean) {

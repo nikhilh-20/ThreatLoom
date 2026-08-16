@@ -50,6 +50,7 @@ fun DashboardScreen(
     val globalQuizBestScore by viewModel.globalQuizBestScore.collectAsState()
     val isReScraping by viewModel.isReScraping.collectAsState()
     val isReSummarizing by viewModel.isReSummarizing.collectAsState()
+    val isBackfillingTlcTags by viewModel.isBackfillingTlcTags.collectAsState()
 
     var showAddUrlsDialog by remember { mutableStateOf(false) }
 
@@ -88,10 +89,10 @@ fun DashboardScreen(
     costConfirmation?.let { estimate ->
         AlertDialog(
             onDismissRequest = { viewModel.declineCost() },
-            title = { Text("Summarization Cost Estimate") },
+            title = { Text("Cost Estimate") },
             text = {
                 Column {
-                    Text("${estimate.articleCount} articles to summarize")
+                    Text("${estimate.articleCount} articles to process")
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Estimated cost: ${"$"}${"%.2f".format(estimate.estimatedCost)}")
                     Spacer(modifier = Modifier.height(4.dp))
@@ -239,7 +240,9 @@ fun DashboardScreen(
                         onReSummarize = if (stats.summaryFailed > 0) viewModel::reSummarizeFailures else null,
                         isReSummarizing = isReSummarizing,
                         onSummarizeUnsummarized = if (stats.unsummarized > 0) viewModel::summarizeUnsummarized else null,
-                        isResummarizingUnsummarized = isReSummarizing
+                        isResummarizingUnsummarized = isReSummarizing,
+                        onBackfillTlcTags = if (stats.missingTlcTags > 0) viewModel::backfillTlcTags else null,
+                        isBackfillingTlcTags = isBackfillingTlcTags
                     )
                 }
                 item {

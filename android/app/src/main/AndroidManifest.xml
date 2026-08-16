@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".ThreatLoomApp"
@@ -24,6 +26,15 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- Override WorkManager's bundled foreground service so it declares the dataSync type
+             (required on API 34+) and survives task swipe (default stopWithTask="true" would kill
+             the refresh pipeline exactly like the viewModelScope bug this is fixing). -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"
+            tools:node="merge" />
 
         <activity
             android:name=".MainActivity"

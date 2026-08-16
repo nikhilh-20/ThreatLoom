@@ -275,7 +275,23 @@ fun MainScreen(
                         val dimmed = isIntelligence && isPipelineRunning
                         NavigationBarItem(
                             modifier = if (dimmed) Modifier.alpha(0.4f) else Modifier,
-                            icon = { screen.icon?.let { Icon(it, contentDescription = screen.title) } },
+                            icon = {
+                                val tint = if (currentDestination?.hierarchy?.any { it.route == screen.route } == true) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                                if (screen.icon != null) {
+                                    Icon(screen.icon, contentDescription = screen.title)
+                                } else {
+                                    Text(
+                                        text = screen.title.take(1),
+                                        color = tint,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
+                            },
                             // Icon-only bar — no labels. Selection is shown by the highlight pill + tint;
                             // a running refresh is still signaled by the dimmed Intelligence icon above.
                             label = null,

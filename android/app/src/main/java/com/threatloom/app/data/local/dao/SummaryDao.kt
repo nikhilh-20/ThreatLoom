@@ -28,4 +28,13 @@ interface SummaryDao {
 
     @Query("DELETE FROM summaries WHERE article_id IN (SELECT id FROM articles WHERE fetched_date >= :cutoffDate)")
     suspend fun deleteFetchedSince(cutoffDate: String)
+
+    @Query("UPDATE summaries SET tags = :tagsJson WHERE article_id = :articleId")
+    suspend fun updateTags(articleId: Long, tagsJson: String)
+
+    @Query("SELECT COUNT(*) FROM summaries WHERE model_used != 'failed' AND (tags IS NULL OR tags NOT LIKE '%\"tlc-%')")
+    suspend fun countMissingTlcTags(): Int
+
+    @Query("SELECT article_id FROM summaries WHERE model_used != 'failed' AND (tags IS NULL OR tags NOT LIKE '%\"tlc-%')")
+    suspend fun getArticleIdsMissingTlcTags(): List<Long>
 }

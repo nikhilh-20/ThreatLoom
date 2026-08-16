@@ -18,5 +18,9 @@ enum class LlmFeature(val displayName: String) {
 
     // Cheap pre-RAG routing call: decides whether a chat turn needs fresh retrieval and
     // which summary sections to inject. Internal; can be model-overridden like the above.
-    CHAT_ROUTER("Chat Router")
+    CHAT_ROUTER("Chat Router"),
+
+    // Lightweight classification-only pass that backfills tlc- catalogue tags onto already-
+    // summarized articles, reusing existing summary_text instead of re-extracting from scratch.
+    TLC_TAGGING("TLC Tagging")
 }

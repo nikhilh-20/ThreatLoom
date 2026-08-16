@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.threatloom.app.notification.NotificationHelper
 import com.threatloom.app.notification.NotificationScheduler
+import com.threatloom.app.notification.RefreshNotificationHelper
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -21,6 +22,7 @@ class ThreatLoomApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createChannel(this)
+        RefreshNotificationHelper.createChannel(this)
         NotificationScheduler.scheduleFirst(this)
     }
 }

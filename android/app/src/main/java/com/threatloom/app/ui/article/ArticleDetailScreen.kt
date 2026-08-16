@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
@@ -484,14 +485,42 @@ fun ArticleDetailScreen(
                     Text(DateUtils.formatDisplay(art.publishedDate), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
-                // Tags
-                if (tags.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        tags.forEach { tag -> TagPill(tag = tag) }
+                // Tags — editable: remove via each pill's close icon, add via the trailing field.
+                Spacer(modifier = Modifier.height(12.dp))
+                var isAddingTag by remember { mutableStateOf(false) }
+                var newTagText by remember { mutableStateOf("") }
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tags.forEach { tag ->
+                        TagPill(tag = tag, onRemove = { viewModel.removeTag(articleId, tag) })
+                    }
+                    if (isAddingTag) {
+                        OutlinedTextField(
+                            value = newTagText,
+                            onValueChange = { newTagText = it },
+                            modifier = Modifier.width(160.dp),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.labelSmall,
+                            placeholder = { Text("tlc-...", style = MaterialTheme.typography.labelSmall) },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    if (newTagText.isNotBlank()) viewModel.addTag(articleId, newTagText)
+                                    newTagText = ""
+                                    isAddingTag = false
+                                }) {
+                                    Icon(Icons.Default.Add, contentDescription = "Confirm tag")
+                                }
+                            }
+                        )
+                    } else {
+                        AssistChip(
+                            onClick = { isAddingTag = true },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            label = { Text("Add tag") }
+                        )
                     }
                 }
 

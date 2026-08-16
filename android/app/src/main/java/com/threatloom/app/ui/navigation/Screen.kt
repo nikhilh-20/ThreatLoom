@@ -12,6 +12,9 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Dashboard)
     data object Intelligence : Screen("intelligence", "Intelligence", Icons.Default.Psychology)
     data object SavedChats : Screen("saved_chats", "Saved Chats", Icons.Default.Bookmarks)
+    // No Material icon reads as a plain "T" — MainScreen renders a Text("T") fallback for
+    // whichever screen has a null icon instead of a vector.
+    data object Catalogue : Screen("catalogue", "Catalogue", icon = null)
     data object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     data object Drilldown : Screen("drilldown/{category}", "Category") {
         fun createRoute(category: String) = "drilldown/$category"
@@ -43,6 +46,6 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     data object ModelSettings : Screen("model_settings", "Model Settings")
 
     companion object {
-        val bottomNavItems = listOf(Dashboard, Intelligence, SavedChats, Settings)
+        val bottomNavItems = listOf(Dashboard, Intelligence, SavedChats, Catalogue, Settings)
     }
 }

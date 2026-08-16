@@ -21,6 +21,8 @@ fun StatsSidebar(
     isReSummarizing: Boolean = false,
     onSummarizeUnsummarized: (() -> Unit)? = null,
     isResummarizingUnsummarized: Boolean = false,
+    onBackfillTlcTags: (() -> Unit)? = null,
+    isBackfillingTlcTags: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -56,6 +58,15 @@ fun StatsSidebar(
                     value = stats.summaryFailed.toString(),
                     onAction = onReSummarize,
                     isRunning = isReSummarizing
+                )
+            }
+            if (stats.missingTlcTags > 0) {
+                ActionStatRow(
+                    label = "Missing catalogue tags",
+                    value = stats.missingTlcTags.toString(),
+                    onAction = onBackfillTlcTags,
+                    isRunning = isBackfillingTlcTags,
+                    valueColor = MaterialTheme.colorScheme.tertiary
                 )
             }
             if (stats.pendingScrape > 0) {

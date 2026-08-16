@@ -11,7 +11,13 @@ data class SummaryResult(
     val mitigations: List<String> = emptyList(),
     val iocs: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
-    @Json(name = "attack_flow") val attackFlow: List<AttackFlowDto> = emptyList()
+    @Json(name = "attack_flow") val attackFlow: List<AttackFlowDto> = emptyList(),
+    @Json(name = "tlc_tags") val tlcTags: List<String> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class TlcTaggingResult(
+    @Json(name = "tlc_tags") val tlcTags: List<String> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)

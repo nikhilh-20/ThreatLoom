@@ -83,6 +83,25 @@ class CostTracker @Inject constructor() {
         return (first + rest) * 1.5  // 1.5x buffer for variance
     }
 
+    fun estimateTlcTaggingCost(articleCount: Int, model: String): Double {
+        if (articleCount <= 0) return 0.0
+        val (inputPrice, cacheReadPrice, outputPrice) = pricingPer1M(model)
+        val cacheWritePrice = inputPrice * 1.25
+        // Much smaller than full summarization: the classification prompt + taxonomy block on
+        // the system side, one article's already-composed summary_text as user input, and a
+        // short tag list back.
+        val systemTokens = 2200.0
+        val userTokens = 800.0
+        val outTokens = 80.0
+        val first = (systemTokens * cacheWritePrice
+                + userTokens * inputPrice
+                + outTokens * outputPrice) / 1_000_000.0
+        val rest = maxOf(0, articleCount - 1) * (systemTokens * cacheReadPrice
+                + userTokens * inputPrice
+                + outTokens * outputPrice) / 1_000_000.0
+        return (first + rest) * 1.5
+    }
+
     fun estimateTrendCost(
         articles: List<com.threatloom.app.domain.model.ArticleWithSummary>,
         model: String

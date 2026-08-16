@@ -13,6 +13,7 @@ import com.threatloom.app.data.repository.DebateRepository
 import com.threatloom.app.data.repository.QuizRepository
 import com.threatloom.app.data.repository.SavedChatRepository
 import com.threatloom.app.data.repository.SavedChatSummary
+import com.threatloom.app.data.repository.SummaryRepository
 import com.threatloom.app.domain.model.ArticleWithSummary
 import com.threatloom.app.domain.model.AttackFlowStep
 import com.threatloom.app.domain.service.ReportService
@@ -42,7 +43,8 @@ class ArticleDetailViewModel @Inject constructor(
     private val debateRepository: DebateRepository,
     private val savedChatRepository: SavedChatRepository,
     private val generateQuizUseCase: GenerateQuizUseCase,
-    private val summarizeArticlesUseCase: SummarizeArticlesUseCase
+    private val summarizeArticlesUseCase: SummarizeArticlesUseCase,
+    private val summaryRepository: SummaryRepository
 ) : ViewModel() {
 
     private val _article = MutableStateFlow<ArticleWithSummary?>(null)
@@ -230,6 +232,24 @@ class ArticleDetailViewModel @Inject constructor(
                 savedChatRepository.delete(id)
                 _savedChats.value = _savedChats.value.filterNot { it.id == id }
             } catch (_: Exception) {}
+        }
+    }
+
+    fun addTag(articleId: Long, tag: String) {
+        val normalized = tag.trim().lowercase().replace(Regex("\\s+"), "-")
+        if (normalized.isEmpty() || _tags.value.contains(normalized)) return
+        val updated = _tags.value + normalized
+        _tags.value = updated
+        viewModelScope.launch {
+            try { summaryRepository.updateTags(articleId, updated) } catch (_: Exception) {}
+        }
+    }
+
+    fun removeTag(articleId: Long, tag: String) {
+        val updated = _tags.value - tag
+        _tags.value = updated
+        viewModelScope.launch {
+            try { summaryRepository.updateTags(articleId, updated) } catch (_: Exception) {}
         }
     }
 

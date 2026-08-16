@@ -53,6 +53,8 @@ class SettingsDataStore @Inject constructor(
         val QUIZ_MODEL = stringPreferencesKey("quiz_model")
         val CHAT_ROUTER_PROVIDER = stringPreferencesKey("chat_router_provider")
         val CHAT_ROUTER_MODEL = stringPreferencesKey("chat_router_model")
+        val TLC_TAGGING_PROVIDER = stringPreferencesKey("tlc_tagging_provider")
+        val TLC_TAGGING_MODEL = stringPreferencesKey("tlc_tagging_model")
 
         private fun overrideKeysFor(feature: LlmFeature): Pair<Preferences.Key<String>, Preferences.Key<String>> =
             when (feature) {
@@ -66,6 +68,7 @@ class SettingsDataStore @Inject constructor(
                 LlmFeature.RELEVANCE_CHECK -> RELEVANCE_CHECK_PROVIDER to RELEVANCE_CHECK_MODEL
                 LlmFeature.QUIZ -> QUIZ_PROVIDER to QUIZ_MODEL
                 LlmFeature.CHAT_ROUTER -> CHAT_ROUTER_PROVIDER to CHAT_ROUTER_MODEL
+                LlmFeature.TLC_TAGGING -> TLC_TAGGING_PROVIDER to TLC_TAGGING_MODEL
             }
     }
 

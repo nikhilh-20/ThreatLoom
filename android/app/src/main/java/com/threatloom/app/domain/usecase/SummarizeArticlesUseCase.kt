@@ -7,6 +7,7 @@ import com.threatloom.app.data.repository.ArticleRepository
 import com.threatloom.app.data.repository.QuizRepository
 import com.threatloom.app.data.repository.SummaryRepository
 import com.threatloom.app.domain.model.LlmFeature
+import com.threatloom.app.domain.model.TlcTaxonomy
 import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.LlmService
 import com.threatloom.app.util.AppLogger
@@ -39,7 +40,11 @@ class SummarizeArticlesUseCase @Inject constructor(
         private const val TAG = "SummarizeArticles"
         private const val MAX_CONTENT_CHARS = 20000
 
-        private const val SUMMARY_PROMPT = """You are a senior cybersecurity threat intelligence analyst.
+        // Not a compile-time constant (embeds TlcTaxonomy.promptBlock), but still computed once
+        // and stable across calls, which is what matters for cacheSystemPrompt to hit.
+        private val TLC_TAXONOMY_BLOCK = TlcTaxonomy.promptBlock
+
+        private val SUMMARY_PROMPT = """You are a senior cybersecurity threat intelligence analyst.
 Given an article provided in the <article> element, produce a structured analysis as a JSON object
 with these exact keys.
 
@@ -179,6 +184,16 @@ data-quality observations, encoding complaints, or placeholder text into any JSO
   - "description" should explain how this step was used in the attack described
   If no attack sequence is described, return an empty array [].
 
+- "tlc_tags": A JSON array of one or more tags from this FIXED catalogue — this is a closed
+  vocabulary, distinct from "tags" above and from the MITRE technique IDs in "attack_flow".
+  Select every entry below whose description clearly matches a technique the article describes.
+  Do not invent new tags and do not paraphrase — copy the tag string exactly as written. If
+  nothing in the catalogue clearly applies (including articles that describe no specific
+  attack/defense technique at all, e.g. a policy, funding, or compliance piece), return
+  ["tlc-unknown"]. Never return an empty array.
+
+$TLC_TAXONOMY_BLOCK
+
 Before generating your final answer, re-scan the article top to bottom and verify that every
 technical detail has been captured in "details" or "iocs". Add any you missed.
 
@@ -278,6 +293,7 @@ IDEAL OUTPUT:
     "RECOVER-FILES.txt"
   ],
   "tags": ["ransomware", "blackcat", "alphv", "cve-2023-3519", "citrix-netscaler", "healthcare"],
+  "tlc_tags": ["tlc-exposed-management-interface-exploit", "tlc-web-shell-deployment", "tlc-c2-framework-abuse", "tlc-lsass-credential-dumping", "tlc-admin-tool-lateral-movement", "tlc-cloud-storage-exfiltration", "tlc-double-extortion"],
   "attack_flow": [
     {
       "phase": "Initial Access",
@@ -442,7 +458,14 @@ The article to analyze is provided in the <article> element. Respond ONLY with v
                 val summaryMd = markdownComposer.compose(result)
                 // Kaido's Blog has its own fixed category — override the LLM's tags so
                 // these articles never get classified into malware/vulnerability/etc.
-                val tags = if (sourceName == FetchKaidoBlogUseCase.BLOG_SOURCE_NAME) listOf("kaidos-blog") else result.tags
+                val validTlcTags = result.tlcTags.filter { it in TlcTaxonomy.allTags }.ifEmpty { listOf("tlc-unknown") }
+                // Kaido's Blog still gets "tlc-unknown" (not real classification) so it doesn't
+                // look "unprocessed" and get repeatedly picked up by the tlc- backfill pass.
+                val tags = if (sourceName == FetchKaidoBlogUseCase.BLOG_SOURCE_NAME) {
+                    listOf("kaidos-blog", "tlc-unknown")
+                } else {
+                    result.tags + validTlcTags
+                }
                 val tagsJson = moshi.adapter<List<String>>(
                     com.squareup.moshi.Types.newParameterizedType(List::class.java, String::class.java)
                 ).toJson(tags)

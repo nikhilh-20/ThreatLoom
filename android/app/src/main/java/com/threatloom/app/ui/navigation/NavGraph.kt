@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.threatloom.app.ui.article.ArticleDetailScreen
 import com.threatloom.app.ui.articlechat.ArticleChatScreen
+import com.threatloom.app.ui.catalogue.CatalogueScreen
 import com.threatloom.app.ui.categorychat.CategoryChatScreen
 import com.threatloom.app.ui.dashboard.DashboardScreen
 import com.threatloom.app.ui.dashboard.DrilldownScreen
@@ -180,6 +181,14 @@ fun NavGraph(navController: NavHostController) {
                         launchSingleTop = true
                         restoreState = true
                     }
+                }
+            )
+        }
+
+        composable(Screen.Catalogue.route) {
+            CatalogueScreen(
+                onArticleClick = { articleId ->
+                    navController.navigate(Screen.ArticleDetail.createRoute(articleId))
                 }
             )
         }
