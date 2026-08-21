@@ -1,5 +1,6 @@
 package com.threatloom.app.ui.savedchats
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -7,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.automirrored.outlined.Article
@@ -30,9 +32,24 @@ fun SavedChatsScreen(
     viewModel: SavedChatsViewModel = hiltViewModel()
 ) {
     val items by viewModel.items.collectAsState()
+    var deleteTarget by remember { mutableStateOf<SavedChatListItem?>(null) }
 
     // Reload whenever the tab is (re)entered — the underlying DAO reads are one-shot suspend calls.
     LaunchedEffect(Unit) { viewModel.refresh() }
+
+    deleteTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete saved chat?") },
+            text = { Text("This saved conversation will be permanently removed.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.delete(target); deleteTarget = null }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+            }
+        )
+    }
 
     Scaffold { paddingValues ->
         Column(
@@ -79,7 +96,7 @@ fun SavedChatsScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(items) { item ->
+                    items(items, key = { "${it.kind}-${it.conversationId}" }) { item ->
                         SavedChatRow(
                             item = item,
                             onClick = {
@@ -96,7 +113,8 @@ fun SavedChatsScreen(
                                     SavedChatKind.DEBATE ->
                                         item.articleId?.let { onDebateClick(it) }
                                 }
-                            }
+                            },
+                            onDeleteRequest = { deleteTarget = item }
                         )
                     }
                 }
@@ -105,53 +123,88 @@ fun SavedChatsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SavedChatRow(
     item: SavedChatListItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteRequest: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Icon(
-                imageVector = item.kind.icon(),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) onDeleteRequest()
+            // Never let the box auto-commit the dismiss; the confirm dialog decides.
+            false
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer, MaterialTheme.shapes.medium)
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.onErrorContainer
                 )
-                item.subtitle?.let {
-                    Spacer(Modifier.height(2.dp))
+            }
+        }
+    ) {
+        Card(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = item.kind.icon(),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                        item.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2
                     )
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TypeTag(item.kind)
-                    Text(
-                        DateUtils.relativeTime(item.date) +
-                            (item.modelUsed?.let { " · $it" } ?: ""),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    item.subtitle?.let {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TypeTag(item.kind)
+                        Text(
+                            buildString {
+                                append(DateUtils.relativeTime(item.date))
+                                if ((item.totalCost ?: 0.0) > 0.0) {
+                                    append(" · $")
+                                    append("%.4f".format(item.totalCost))
+                                }
+                                item.modelUsed?.let { append(" · $it") }
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

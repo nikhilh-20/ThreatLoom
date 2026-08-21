@@ -38,7 +38,8 @@ data class SavedIntelligenceChatMessageDto(
     val content: String,
     val modelUsed: String? = null,
     /** Ids of the articles cited by this (assistant) message, so citation cards survive a resume. */
-    val citedArticleIds: List<Long> = emptyList()
+    val citedArticleIds: List<Long> = emptyList(),
+    val isTruncated: Boolean = false
 )
 
 /** Persisted form of one rolling-context entry: article id + which summary sections were injected. */
@@ -88,7 +89,8 @@ class SavedIntelligenceChatRepository @Inject constructor(
                 role = dto.role,
                 content = dto.content,
                 articles = articles.ifEmpty { null },
-                modelUsed = dto.modelUsed
+                modelUsed = dto.modelUsed,
+                isTruncated = dto.isTruncated
             )
         }
 
@@ -126,7 +128,8 @@ class SavedIntelligenceChatRepository @Inject constructor(
                 role = it.role,
                 content = it.content,
                 modelUsed = it.modelUsed,
-                citedArticleIds = it.articles?.map { a -> a.id } ?: emptyList()
+                citedArticleIds = it.articles?.map { a -> a.id } ?: emptyList(),
+                isTruncated = it.isTruncated
             )
         }
         val messagesJson = adapter.toJson(dtos)

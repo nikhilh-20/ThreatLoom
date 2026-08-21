@@ -16,7 +16,8 @@ data class LlmResult(
     val outputTokens: Int = 0,
     val cacheWriteTokens: Int = 0,
     val cacheReadTokens: Int = 0,
-    val webSearchCalls: Int = 0
+    val webSearchCalls: Int = 0,
+    val truncated: Boolean = false
 )
 
 @Singleton
@@ -40,7 +41,39 @@ class LlmService @Inject constructor(
         maxTokens: Int = 2000,
         jsonMode: Boolean = false,
         cacheSystemPrompt: Boolean = false,
-        enableWebSearch: Boolean = false
+        enableWebSearch: Boolean = false,
+        autoContinue: Boolean = false
+    ): LlmResult {
+        val result = chatCompletionOnce(feature, systemPrompt, messages, temperature, maxTokens, jsonMode, cacheSystemPrompt, enableWebSearch)
+        if (!autoContinue || !result.truncated) return result
+
+        // The provider hit its output-token cap. Make exactly one continuation call, asking the
+        // model to resume from where it stopped, and stitch the two halves together. Capped at one
+        // extra call so a persistently truncating prompt can't runaway the cost.
+        val continuationMessages = messages +
+            ChatMessageDto("assistant", result.content) +
+            ChatMessageDto("user", "Continue exactly where you left off. Do not repeat any text already written, and do not add any preamble or acknowledgement.")
+        val continuation = chatCompletionOnce(feature, systemPrompt, continuationMessages, temperature, maxTokens, jsonMode, cacheSystemPrompt, enableWebSearch)
+        return result.copy(
+            content = result.content + continuation.content,
+            inputTokens = result.inputTokens + continuation.inputTokens,
+            outputTokens = result.outputTokens + continuation.outputTokens,
+            cacheWriteTokens = result.cacheWriteTokens + continuation.cacheWriteTokens,
+            cacheReadTokens = result.cacheReadTokens + continuation.cacheReadTokens,
+            webSearchCalls = result.webSearchCalls + continuation.webSearchCalls,
+            truncated = continuation.truncated
+        )
+    }
+
+    private suspend fun chatCompletionOnce(
+        feature: LlmFeature,
+        systemPrompt: String?,
+        messages: List<ChatMessageDto>,
+        temperature: Float,
+        maxTokens: Int,
+        jsonMode: Boolean,
+        cacheSystemPrompt: Boolean,
+        enableWebSearch: Boolean
     ): LlmResult {
         val provider = resolveProvider(feature)
         return if (provider == "anthropic") {
@@ -113,8 +146,8 @@ class LlmService @Inject constructor(
             )
         }
         val response = openAiApi.chatCompletion(request)
-        var content = response.choices.firstOrNull()?.message?.content
-            ?: throw IllegalStateException("No response from OpenAI")
+        val choice = response.choices.firstOrNull() ?: throw IllegalStateException("No response from OpenAI")
+        var content = choice.message.content
         // Reasoning models don't get response_format, so JSON is enforced only by the prompt;
         // strip any code fences the model may add so Moshi can parse the response.
         if (jsonMode) content = stripCodeFences(content)
@@ -123,7 +156,7 @@ class LlmService @Inject constructor(
         val cachedTok = response.usage?.promptTokensDetails?.cachedTokens ?: 0
         val inputTok = totalInput - cachedTok
         costTracker.addUsage(inputTok, outputTok, cacheWrite = 0, cacheRead = cachedTok)
-        return LlmResult(content, inputTok, outputTok, cacheWriteTokens = 0, cacheReadTokens = cachedTok)
+        return LlmResult(content, inputTok, outputTok, cacheWriteTokens = 0, cacheReadTokens = cachedTok, truncated = choice.finish_reason == "length")
     }
 
     private suspend fun callAnthropic(
@@ -205,7 +238,7 @@ class LlmService @Inject constructor(
         val searchCalls = response.usage?.serverToolUse?.webSearchRequests ?: 0
         costTracker.addWebSearchCalls(searchCalls)
         appLogger.d("LlmService", "Anthropic response: model=$model, webSearchEnabled=$enableWebSearch, searchCalls=$searchCalls")
-        return LlmResult(content, inputTok, outputTok, cacheWriteTok, cacheReadTok, webSearchCalls = searchCalls)
+        return LlmResult(content, inputTok, outputTok, cacheWriteTok, cacheReadTok, webSearchCalls = searchCalls, truncated = response.stop_reason == "max_tokens")
     }
 
     private suspend fun callOpenAiResponses(
@@ -238,7 +271,7 @@ class LlmService @Inject constructor(
         val searchCalls = response.output.count { it.type == "web_search_call" }
         costTracker.addWebSearchCalls(searchCalls)
         appLogger.d("LlmService", "OpenAI Responses API result: model=$model, searchCalls=$searchCalls")
-        return LlmResult(content, inputTok, outputTok, cacheWriteTokens = 0, cacheReadTokens = cachedTok, webSearchCalls = searchCalls)
+        return LlmResult(content, inputTok, outputTok, cacheWriteTokens = 0, cacheReadTokens = cachedTok, webSearchCalls = searchCalls, truncated = response.status == "incomplete")
     }
 
     private fun stripCodeFences(text: String): String {

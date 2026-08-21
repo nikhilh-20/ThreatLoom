@@ -61,6 +61,9 @@ fun IntelligenceScreen(
     val isSaved by viewModel.isSaved.collectAsState()
     val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
     val savedChats by viewModel.savedChats.collectAsState()
+    val sessionCost by viewModel.sessionCost.collectAsState()
+    val sessionWebSearchCost by viewModel.sessionWebSearchCost.collectAsState()
+    val sessionModel by viewModel.sessionModel.collectAsState()
 
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -69,6 +72,7 @@ fun IntelligenceScreen(
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
     var showSavedSheet by remember { mutableStateOf(false) }
     var deleteChatId by remember { mutableStateOf<Long?>(null) }
+    var showCostDialog by remember { mutableStateOf(false) }
 
     val hasUserMessage = messages.any { it.role == "user" }
 
@@ -215,6 +219,34 @@ fun IntelligenceScreen(
         )
     }
 
+    if (showCostDialog) {
+        AlertDialog(
+            onDismissRequest = { showCostDialog = false; viewModel.clearConversation() },
+            title = { Text("Chat Session Cost") },
+            text = {
+                Column {
+                    Text("Cost: ${"$"}${"%.4f".format(sessionCost ?: 0.0)}")
+                    sessionWebSearchCost?.takeIf { it > 0.0 }?.let { webCost ->
+                        Text(
+                            "includes web search: ${"$"}${"%.4f".format(webCost)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Model: ${sessionModel ?: "Unknown"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCostDialog = false; viewModel.clearConversation() }) { Text("OK") }
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
@@ -254,7 +286,10 @@ fun IntelligenceScreen(
                             )
                         }
                         if (messages.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.clearConversation() }) {
+                            IconButton(onClick = {
+                                val cost = sessionCost
+                                if (cost != null && cost > 0.0) showCostDialog = true else viewModel.clearConversation()
+                            }) {
                                 Icon(
                                     Icons.Default.RestartAlt,
                                     contentDescription = "New conversation",

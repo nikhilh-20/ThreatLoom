@@ -28,6 +28,7 @@ data class SavedChatListItem(
     /** Context line: article title, category name, or the Intelligence feed. */
     val subtitle: String?,
     val date: String?,
+    val totalCost: Double?,
     val modelUsed: String?,
     val articleId: Long? = null,
     val categoryName: String? = null
@@ -80,6 +81,7 @@ class SavedChatsViewModel @Inject constructor(
                             title = it.title ?: "Chat",
                             subtitle = titlesById[it.articleId],
                             date = it.updatedDate,
+                            totalCost = it.totalCost,
                             modelUsed = it.modelUsed,
                             articleId = it.articleId
                         )
@@ -93,6 +95,7 @@ class SavedChatsViewModel @Inject constructor(
                             title = it.title ?: "Chat",
                             subtitle = it.categoryName,
                             date = it.updatedDate,
+                            totalCost = it.totalCost,
                             modelUsed = it.modelUsed,
                             categoryName = it.categoryName
                         )
@@ -106,6 +109,7 @@ class SavedChatsViewModel @Inject constructor(
                             title = it.title ?: "Chat",
                             subtitle = "Intelligence",
                             date = it.updatedDate,
+                            totalCost = it.totalCost,
                             modelUsed = it.modelUsed
                         )
                     )
@@ -119,6 +123,7 @@ class SavedChatsViewModel @Inject constructor(
                             title = it.debateTopic ?: articleTitle ?: "Debate",
                             subtitle = articleTitle,
                             date = it.createdDate,
+                            totalCost = it.totalCost,
                             modelUsed = it.modelUsed,
                             articleId = it.articleId
                         )
@@ -134,5 +139,18 @@ class SavedChatsViewModel @Inject constructor(
     /** Queue a saved Intelligence chat for the Intelligence tab to open once it becomes active. */
     fun requestResumeIntelligence(id: Long) {
         appEvent.requestResumeIntelligenceChat(id)
+    }
+
+    /** Delete a saved conversation from whichever store owns it, then drop it from the list. */
+    fun delete(item: SavedChatListItem) {
+        viewModelScope.launch {
+            when (item.kind) {
+                SavedChatKind.ARTICLE -> savedChatRepository.delete(item.conversationId)
+                SavedChatKind.CATEGORY -> savedCategoryChatRepository.delete(item.conversationId)
+                SavedChatKind.INTELLIGENCE -> savedIntelligenceChatRepository.delete(item.conversationId)
+                SavedChatKind.DEBATE -> debateRepository.delete(item.conversationId)
+            }
+            _items.value = _items.value.filterNot { it == item }
+        }
     }
 }

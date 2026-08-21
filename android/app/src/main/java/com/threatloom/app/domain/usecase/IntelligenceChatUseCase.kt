@@ -146,15 +146,16 @@ Guidelines for in-scope questions:
                 feature = LlmFeature.INTELLIGENCE_CHAT,
                 messages = llmMessages,
                 temperature = 0.3f,
-                maxTokens = 2000,
+                maxTokens = 4000,
                 cacheSystemPrompt = true,
-                enableWebSearch = webSearchEnabled
+                enableWebSearch = webSearchEnabled,
+                autoContinue = true
             )
             appLogger.i(
                 TAG,
-                "LLM done: model=$model, in=${result.inputTokens}, out=${result.outputTokens}, cacheWrite=${result.cacheWriteTokens}, cacheRead=${result.cacheReadTokens}, webSearch=${result.webSearchCalls}"
+                "LLM done: model=$model, in=${result.inputTokens}, out=${result.outputTokens}, cacheWrite=${result.cacheWriteTokens}, cacheRead=${result.cacheReadTokens}, webSearch=${result.webSearchCalls}, truncated=${result.truncated}"
             )
-            val msg = ChatMessage("assistant", result.content, working.map { it.article }, model, webSearchCount = result.webSearchCalls)
+            val msg = ChatMessage("assistant", result.content, working.map { it.article }, model, webSearchCount = result.webSearchCalls, isTruncated = result.truncated)
             RagChatResult(msg, working)
         } catch (e: Exception) {
             appLogger.e(TAG, "LLM call failed: ${e.message}")

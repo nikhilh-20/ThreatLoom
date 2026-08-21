@@ -17,6 +17,7 @@ data class GlobalDebateSummary(
     val articleId: Long,
     val debateTopic: String?,
     val createdDate: String?,
+    val totalCost: Double,
     val modelUsed: String?
 )
 
@@ -90,6 +91,7 @@ class DebateRepository @Inject constructor(
                 articleId = it.articleId,
                 debateTopic = it.debateTopic,
                 createdDate = it.createdDate,
+                totalCost = it.totalCost,
                 modelUsed = it.modelUsed
             )
         }

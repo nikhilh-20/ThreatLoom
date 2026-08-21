@@ -20,7 +20,8 @@ data class AnthropicServerToolUsage(
 @JsonClass(generateAdapter = true)
 data class AnthropicResponse(
     val content: List<ContentBlock>,
-    val usage: AnthropicUsage? = null
+    val usage: AnthropicUsage? = null,
+    val stop_reason: String? = null
 )
 
 @JsonClass(generateAdapter = true)

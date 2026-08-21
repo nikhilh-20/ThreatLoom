@@ -3,6 +3,7 @@ package com.threatloom.app.ui.dashboard
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -24,6 +25,7 @@ fun SubcategoryDrilldownScreen(
     viewModel: DrilldownViewModel = hiltViewModel()
 ) {
     val displayName = remember(subcategoryTag) { CategoryRules.formatEntityName(subcategoryTag) }
+    val listState = rememberLazyListState()
     val articles by viewModel.articles.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val quarterlyTrends by viewModel.quarterlyTrends.collectAsState()
@@ -57,6 +59,7 @@ fun SubcategoryDrilldownScreen(
             LoadingIndicator(modifier = Modifier.padding(paddingValues))
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

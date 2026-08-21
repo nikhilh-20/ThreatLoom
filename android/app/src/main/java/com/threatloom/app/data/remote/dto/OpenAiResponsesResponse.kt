@@ -6,7 +6,8 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class OpenAiResponsesResponse(
     val output: List<OpenAiResponsesOutputItem>,
-    val usage: OpenAiResponsesUsage? = null
+    val usage: OpenAiResponsesUsage? = null,
+    val status: String? = null
 )
 
 @JsonClass(generateAdapter = true)

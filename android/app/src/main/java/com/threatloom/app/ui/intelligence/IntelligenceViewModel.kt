@@ -9,6 +9,7 @@ import com.threatloom.app.data.repository.SavedIntelligenceChatSummary
 import com.threatloom.app.data.repository.SummaryRepository
 import com.threatloom.app.domain.model.ChatMessage
 import com.threatloom.app.domain.model.ContextArticle
+import com.threatloom.app.domain.service.CostTracker
 import com.threatloom.app.domain.service.ReportService
 import com.threatloom.app.domain.usecase.IntelligenceChatUseCase
 import com.threatloom.app.util.AppEvent
@@ -30,6 +31,7 @@ class IntelligenceViewModel @Inject constructor(
     private val reportService: ReportService,
     private val settingsDataStore: SettingsDataStore,
     private val savedIntelligenceChatRepository: SavedIntelligenceChatRepository,
+    private val costTracker: CostTracker,
     private val appEvent: AppEvent
 ) : ViewModel() {
 
@@ -42,6 +44,17 @@ class IntelligenceViewModel @Inject constructor(
     // Persistence state for the current conversation.
     private var conversationId: Long? = null
     private var latestModel: String? = null
+    private var totalCost = 0.0
+    private var totalWebSearchCost = 0.0
+
+    private val _sessionCost = MutableStateFlow<Double?>(null)
+    val sessionCost: StateFlow<Double?> = _sessionCost.asStateFlow()
+
+    private val _sessionWebSearchCost = MutableStateFlow<Double?>(null)
+    val sessionWebSearchCost: StateFlow<Double?> = _sessionWebSearchCost.asStateFlow()
+
+    private val _sessionModel = MutableStateFlow<String?>(null)
+    val sessionModel: StateFlow<String?> = _sessionModel.asStateFlow()
 
     private val _isSaved = MutableStateFlow(false)
     val isSaved: StateFlow<Boolean> = _isSaved.asStateFlow()
@@ -114,6 +127,7 @@ class IntelligenceViewModel @Inject constructor(
         _messages.value = history
         viewModelScope.launch {
             _isLoading.value = true
+            val before = costTracker.getSnapshot()
             val result = intelligenceChatUseCase(
                 messages = history,
                 priorContext = contextArticles,
@@ -121,8 +135,15 @@ class IntelligenceViewModel @Inject constructor(
                 onProgress = { stage -> _loadingStage.value = stage }
             )
             contextArticles = result.context
+            val after = costTracker.getSnapshot()
+            val model = result.message.modelUsed ?: latestModel ?: ""
+            totalCost += costTracker.deltaCost(before, after, model)
+            totalWebSearchCost += costTracker.webSearchDeltaCost(before, after)
+            latestModel = model.ifBlank { latestModel }
+            _sessionCost.value = totalCost
+            _sessionWebSearchCost.value = totalWebSearchCost
+            _sessionModel.value = latestModel
             _messages.value = _messages.value + result.message
-            result.message.modelUsed?.let { latestModel = it }
             _hasUnsavedChanges.value = true
             _isLoading.value = false
         }
@@ -136,7 +157,7 @@ class IntelligenceViewModel @Inject constructor(
                 id = conversationId,
                 messages = _messages.value,
                 context = contextArticles,
-                totalCost = 0.0,
+                totalCost = totalCost,
                 modelUsed = latestModel
             )
             _isSaved.value = true
@@ -157,6 +178,9 @@ class IntelligenceViewModel @Inject constructor(
             contextArticles = conversation.context
             latestModel = conversation.modelUsed
             conversationId = conversation.id
+            totalCost = conversation.totalCost
+            _sessionCost.value = conversation.totalCost
+            _sessionModel.value = conversation.modelUsed
             _isSaved.value = true
             _hasUnsavedChanges.value = false
             _query.value = ""
@@ -187,6 +211,11 @@ class IntelligenceViewModel @Inject constructor(
         _query.value = ""
         conversationId = null
         latestModel = null
+        totalCost = 0.0
+        totalWebSearchCost = 0.0
+        _sessionCost.value = null
+        _sessionWebSearchCost.value = null
+        _sessionModel.value = null
         _isSaved.value = false
         _hasUnsavedChanges.value = false
     }

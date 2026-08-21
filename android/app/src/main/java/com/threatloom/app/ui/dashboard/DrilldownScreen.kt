@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ fun DrilldownScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
     var showReportTrendDialog by remember { mutableStateOf(false) }
     var showReportForecastDialog by remember { mutableStateOf(false) }
     var deleteChatId by remember { mutableStateOf<Long?>(null) }
@@ -237,6 +239,7 @@ fun DrilldownScreen(
             LoadingIndicator(modifier = Modifier.padding(paddingValues))
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

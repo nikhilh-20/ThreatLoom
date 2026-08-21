@@ -23,7 +23,8 @@ data class OpenAiResponse(
 
 @JsonClass(generateAdapter = true)
 data class Choice(
-    val message: MessageContent
+    val message: MessageContent,
+    val finish_reason: String? = null
 )
 
 @JsonClass(generateAdapter = true)

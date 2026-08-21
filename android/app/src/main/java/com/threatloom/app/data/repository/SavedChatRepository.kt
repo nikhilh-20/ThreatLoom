@@ -26,6 +26,7 @@ data class GlobalArticleChatSummary(
     val articleId: Long,
     val title: String?,
     val updatedDate: String?,
+    val totalCost: Double,
     val modelUsed: String?
 )
 
@@ -42,7 +43,8 @@ data class SavedChatConversation(
 data class SavedChatMessageDto(
     val role: String,
     val content: String,
-    val modelUsed: String? = null
+    val modelUsed: String? = null,
+    val isTruncated: Boolean = false
 )
 
 @Singleton
@@ -73,6 +75,7 @@ class SavedChatRepository @Inject constructor(
                 articleId = it.articleId,
                 title = it.title,
                 updatedDate = it.updatedDate,
+                totalCost = it.totalCost,
                 modelUsed = it.modelUsed
             )
         }
@@ -81,7 +84,7 @@ class SavedChatRepository @Inject constructor(
     suspend fun getById(id: Long): SavedChatConversation? {
         val entity = savedChatDao.getById(id) ?: return null
         val dtos = entity.messages?.let { runCatching { adapter.fromJson(it) }.getOrNull() } ?: emptyList()
-        val messages = dtos.map { ChatMessage(role = it.role, content = it.content, modelUsed = it.modelUsed) }
+        val messages = dtos.map { ChatMessage(role = it.role, content = it.content, modelUsed = it.modelUsed, isTruncated = it.isTruncated) }
         return SavedChatConversation(
             id = entity.id,
             title = entity.title,
@@ -98,7 +101,7 @@ class SavedChatRepository @Inject constructor(
         totalCost: Double,
         modelUsed: String?
     ): Long {
-        val dtos = messages.map { SavedChatMessageDto(role = it.role, content = it.content, modelUsed = it.modelUsed) }
+        val dtos = messages.map { SavedChatMessageDto(role = it.role, content = it.content, modelUsed = it.modelUsed, isTruncated = it.isTruncated) }
         val messagesJson = adapter.toJson(dtos)
 
         if (id == null) {

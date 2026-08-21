@@ -3,6 +3,7 @@ package com.threatloom.app.ui.catalogue
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +20,7 @@ fun CatalogueScreen(
     onArticleClick: (Long) -> Unit,
     viewModel: CatalogueViewModel = hiltViewModel()
 ) {
+    val listState = rememberLazyListState()
     val availableTags by viewModel.availableTags.collectAsState()
     val selectedTags by viewModel.selectedTags.collectAsState()
     val filteredArticles by viewModel.filteredArticles.collectAsState()
@@ -43,6 +45,7 @@ fun CatalogueScreen(
             LoadingIndicator(modifier = Modifier.padding(paddingValues))
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(paddingValues),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

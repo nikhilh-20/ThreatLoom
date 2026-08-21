@@ -6,5 +6,6 @@ data class ChatMessage(
     val articles: List<ArticleWithSummary>? = null,
     val modelUsed: String? = null,
     val concluded: Boolean = false,
-    val webSearchCount: Int = 0
+    val webSearchCount: Int = 0,
+    val isTruncated: Boolean = false
 )

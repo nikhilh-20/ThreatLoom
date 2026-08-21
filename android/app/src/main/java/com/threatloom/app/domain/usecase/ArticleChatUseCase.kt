@@ -74,11 +74,12 @@ Guidelines:
                 feature = LlmFeature.ARTICLE_CHAT,
                 messages = llmMessages,
                 temperature = 0.3f,
-                maxTokens = 2000,
+                maxTokens = 4000,
                 cacheSystemPrompt = true,
-                enableWebSearch = webSearchEnabled
+                enableWebSearch = webSearchEnabled,
+                autoContinue = true
             )
-            ChatMessage("assistant", result.content, modelUsed = model, webSearchCount = result.webSearchCalls)
+            ChatMessage("assistant", result.content, modelUsed = model, webSearchCount = result.webSearchCalls, isTruncated = result.truncated)
         } catch (e: Exception) {
             ChatMessage("assistant", "Error: ${e.message}")
         }

@@ -28,6 +28,7 @@ data class GlobalCategoryChatSummary(
     val categoryName: String,
     val title: String?,
     val updatedDate: String?,
+    val totalCost: Double,
     val modelUsed: String?
 )
 
@@ -47,7 +48,8 @@ data class SavedCategoryChatMessageDto(
     val content: String,
     val modelUsed: String? = null,
     /** Ids of the articles cited by this (assistant) message, so citation cards survive a resume. */
-    val citedArticleIds: List<Long> = emptyList()
+    val citedArticleIds: List<Long> = emptyList(),
+    val isTruncated: Boolean = false
 )
 
 /** Persisted form of one rolling-context entry: article id + which summary sections were injected. */
@@ -88,6 +90,7 @@ class SavedCategoryChatRepository @Inject constructor(
                 categoryName = it.categoryName,
                 title = it.title,
                 updatedDate = it.updatedDate,
+                totalCost = it.totalCost,
                 modelUsed = it.modelUsed
             )
         }
@@ -110,7 +113,8 @@ class SavedCategoryChatRepository @Inject constructor(
                 role = dto.role,
                 content = dto.content,
                 articles = articles.ifEmpty { null },
-                modelUsed = dto.modelUsed
+                modelUsed = dto.modelUsed,
+                isTruncated = dto.isTruncated
             )
         }
         return SavedCategoryChatConversation(
@@ -148,7 +152,8 @@ class SavedCategoryChatRepository @Inject constructor(
                 role = it.role,
                 content = it.content,
                 modelUsed = it.modelUsed,
-                citedArticleIds = it.articles?.map { a -> a.id } ?: emptyList()
+                citedArticleIds = it.articles?.map { a -> a.id } ?: emptyList(),
+                isTruncated = it.isTruncated
             )
         }
         val messagesJson = adapter.toJson(dtos)
