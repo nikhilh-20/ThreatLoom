@@ -14,6 +14,9 @@ interface EmbeddingDao {
     @Query("SELECT * FROM article_embeddings WHERE model_used = :modelUsed")
     suspend fun getByModel(modelUsed: String): List<EmbeddingEntity>
 
+    @Query("SELECT * FROM article_embeddings WHERE article_id = :articleId")
+    suspend fun getByArticleId(articleId: Long): EmbeddingEntity?
+
     @Query("""
         SELECT ae.* FROM article_embeddings ae
         JOIN articles a ON a.id = ae.article_id

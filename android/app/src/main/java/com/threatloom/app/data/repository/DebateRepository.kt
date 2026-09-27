@@ -9,6 +9,7 @@ import com.threatloom.app.data.local.entity.DebateEntity
 import com.threatloom.app.domain.model.ChatMessage
 import com.threatloom.app.domain.model.ContextArticle
 import com.threatloom.app.domain.model.SummarySection
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -114,6 +115,7 @@ class DebateRepository @Inject constructor(
         val contextJson = contextAdapter.toJson(
             context.map { DebateContextArticleDto(it.article.id, it.sections.map { s -> s.token }) }
         )
+        val createdDate = debateDao.getByArticleId(articleId)?.createdDate ?: DateUtils.nowIso()
         debateDao.upsert(
             DebateEntity(
                 articleId = articleId,
@@ -122,7 +124,8 @@ class DebateRepository @Inject constructor(
                 contextArticles = contextJson,
                 totalCost = totalCost,
                 modelUsed = modelUsed,
-                concluded = concluded
+                concluded = concluded,
+                createdDate = createdDate
             )
         )
     }

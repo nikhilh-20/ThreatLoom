@@ -2,6 +2,7 @@ package com.threatloom.app.data.repository
 
 import com.threatloom.app.data.local.dao.QuizDao
 import com.threatloom.app.data.local.entity.QuizEntity
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,7 +16,7 @@ class QuizRepository @Inject constructor(
 
     suspend fun upsertQuiz(articleId: Long) {
         if (quizDao.getByArticleId(articleId) == null) {
-            quizDao.upsert(QuizEntity(articleId = articleId))
+            quizDao.upsert(QuizEntity(articleId = articleId, createdDate = DateUtils.nowIso()))
         }
     }
 

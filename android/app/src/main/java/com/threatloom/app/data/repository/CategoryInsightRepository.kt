@@ -3,6 +3,7 @@ package com.threatloom.app.data.repository
 import com.threatloom.app.data.local.dao.CategoryInsightDao
 import com.threatloom.app.data.local.entity.CategoryInsightEntity
 import com.threatloom.app.domain.model.CategoryInsight
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,10 +19,11 @@ class CategoryInsightRepository @Inject constructor(
         categoryName: String, trendText: String, forecastText: String,
         articleCount: Int, articleHash: String, modelUsed: String
     ) {
+        val createdDate = categoryInsightDao.getByCategory(categoryName)?.createdDate ?: DateUtils.nowIso()
         categoryInsightDao.upsert(CategoryInsightEntity(
             categoryName = categoryName, trendText = trendText,
             forecastText = forecastText, articleCount = articleCount,
-            articleHash = articleHash, modelUsed = modelUsed
+            articleHash = articleHash, modelUsed = modelUsed, createdDate = createdDate
         ))
     }
 

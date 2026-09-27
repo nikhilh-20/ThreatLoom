@@ -5,6 +5,7 @@ import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.threatloom.app.data.local.dao.SummaryDao
 import com.threatloom.app.data.local.entity.SummaryEntity
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,10 +22,11 @@ class SummaryRepository @Inject constructor(
         articleId: Long, summaryText: String, keyPoints: String?,
         tags: String?, modelUsed: String?
     ) {
+        val createdDate = summaryDao.getByArticleId(articleId)?.createdDate ?: DateUtils.nowIso()
         summaryDao.upsert(SummaryEntity(
             articleId = articleId, summaryText = summaryText,
             keyPoints = keyPoints, tags = tags,
-            modelUsed = modelUsed
+            modelUsed = modelUsed, createdDate = createdDate
         ))
     }
 

@@ -8,6 +8,7 @@ import com.threatloom.app.data.local.dao.SummaryDao
 import com.threatloom.app.data.local.dao.EmbeddingDao
 import com.threatloom.app.data.local.entity.ArticleEntity
 import com.threatloom.app.domain.model.ArticleWithSummary
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -59,7 +60,7 @@ class ArticleRepository @Inject constructor(
     suspend fun insert(sourceId: Long, title: String, url: String, author: String?, publishedDate: String?, imageUrl: String?): Long {
         return articleDao.insert(ArticleEntity(
             sourceId = sourceId, title = title, url = url,
-            author = author, publishedDate = publishedDate, imageUrl = imageUrl
+            author = author, publishedDate = publishedDate, fetchedDate = DateUtils.nowIso(), imageUrl = imageUrl
         ))
     }
 

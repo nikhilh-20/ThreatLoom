@@ -3,6 +3,7 @@ package com.threatloom.app.data.repository
 import com.threatloom.app.data.local.dao.TrendAnalysisDao
 import com.threatloom.app.data.local.entity.TrendAnalysisEntity
 import com.threatloom.app.domain.model.TrendAnalysis
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,8 @@ class TrendAnalysisRepository @Inject constructor(
         articleHash: String,
         modelUsed: String
     ) {
+        val createdDate = trendAnalysisDao.getByCategoryAndPeriod(categoryName, periodType, periodLabel)?.createdDate
+            ?: DateUtils.nowIso()
         trendAnalysisDao.upsert(
             TrendAnalysisEntity(
                 categoryName = categoryName,
@@ -39,7 +42,8 @@ class TrendAnalysisRepository @Inject constructor(
                 trendText = trendText,
                 articleCount = articleCount,
                 articleHash = articleHash,
-                modelUsed = modelUsed
+                modelUsed = modelUsed,
+                createdDate = createdDate
             )
         )
     }

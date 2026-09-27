@@ -70,11 +70,13 @@ class DeduplicateArticlesUseCase @Inject constructor(
                 for ((cand, data) in chunk.zip(response.data)) {
                     val blob = embeddingMath.floatsToBlob(data.embedding)
                     embedded.add(Embedded(cand, embeddingMath.blobToFloats(blob)))
+                    val createdDate = dedupEmbeddingDao.getByArticleId(cand.id)?.createdDate ?: DateUtils.nowIso()
                     dedupEmbeddingDao.upsert(
                         ArticleDedupEmbeddingEntity(
                             articleId = cand.id,
                             embedding = blob,
-                            modelUsed = EMBEDDING_MODEL
+                            modelUsed = EMBEDDING_MODEL,
+                            createdDate = createdDate
                         )
                     )
                 }
@@ -149,7 +151,8 @@ class DeduplicateArticlesUseCase @Inject constructor(
                 articleId2 = dupId,
                 correlationType = "duplicate",
                 confidence = similarity,
-                description = "Duplicate coverage of the same topic within 24h"
+                description = "Duplicate coverage of the same topic within 24h",
+                createdDate = DateUtils.nowIso()
             )
         )
     }

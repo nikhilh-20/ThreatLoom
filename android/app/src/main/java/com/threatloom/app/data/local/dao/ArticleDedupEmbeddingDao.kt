@@ -20,6 +20,9 @@ data class DedupReference(
 
 @Dao
 interface ArticleDedupEmbeddingDao {
+    @Query("SELECT * FROM article_dedup_embeddings WHERE article_id = :articleId")
+    suspend fun getByArticleId(articleId: Long): ArticleDedupEmbeddingEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(embedding: ArticleDedupEmbeddingEntity)
 

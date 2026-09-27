@@ -2,6 +2,7 @@ package com.threatloom.app.data.repository
 
 import com.threatloom.app.data.local.dao.EmbeddingDao
 import com.threatloom.app.data.local.entity.EmbeddingEntity
+import com.threatloom.app.util.DateUtils
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +23,10 @@ class EmbeddingRepository @Inject constructor(
     }
 
     suspend fun upsert(articleId: Long, embedding: ByteArray, modelUsed: String) {
-        embeddingDao.upsert(EmbeddingEntity(articleId = articleId, embedding = embedding, modelUsed = modelUsed))
+        val createdDate = embeddingDao.getByArticleId(articleId)?.createdDate ?: DateUtils.nowIso()
+        embeddingDao.upsert(
+            EmbeddingEntity(articleId = articleId, embedding = embedding, modelUsed = modelUsed, createdDate = createdDate)
+        )
     }
 
     suspend fun countAll() = embeddingDao.countAll()
